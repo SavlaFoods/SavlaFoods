@@ -1,0 +1,518 @@
+//Multiselect.tsx
+import React, {useState, useMemo} from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  FlatList,
+  StyleSheet,
+  SafeAreaView,
+  Platform,
+  Keyboard,
+  TextInput,
+} from 'react-native';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+
+interface MultiSelectOption {
+  label: string;
+  value: string;
+  disabled?: boolean; // Add disabled property
+}
+
+interface MultiSelectProps {
+  options: MultiSelectOption[];
+  selectedValues: string[];
+  onSelectChange: (values: string[]) => void;
+  placeholder: string;
+  disabled?: boolean;
+  primaryColor?: string;
+  showSelectAll?: boolean;
+  searchPlaceholder?: string;
+}
+
+const MultiSelect = ({
+  options,
+  selectedValues,
+  onSelectChange,
+  placeholder,
+  disabled = false,
+  primaryColor = '#F48221',
+  showSelectAll = true,
+  searchPlaceholder = 'Search options...',
+}: MultiSelectProps) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter options based on search query
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      console.log('Search cleared, showing all options:', options);
+      return options;
+    }
+    const filtered = options.filter(option =>
+      option.label.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+    console.log('Filtered options:', filtered);
+    return filtered;
+  }, [options, searchQuery]);
+
+  // Get display text for selected items
+  const getDisplayText = () => {
+    if (selectedValues.length === 0) return placeholder;
+    if (selectedValues.length === 1) {
+      return (
+        options.find(option => option.value === selectedValues[0])?.label || ''
+      );
+    }
+    return `${selectedValues.length} items selected`;
+  };
+
+  // Handle press with keyboard dismiss
+  const handlePress = () => {
+    if (!disabled) {
+      Keyboard.dismiss();
+      setIsVisible(true);
+    }
+  };
+
+  // Handle modal close
+  const handleClose = () => {
+    setIsVisible(false);
+    setSearchQuery(''); // Clear search when closing
+  };
+
+  // Toggle selection of an item
+  const toggleItem = (value: string, isDisabled: boolean) => {
+    if (isDisabled) {
+      return; // Prevent selection of disabled items
+    }
+    if (selectedValues.includes(value)) {
+      onSelectChange(selectedValues.filter(v => v !== value));
+    } else {
+      onSelectChange([...selectedValues, value]);
+    }
+  };
+
+  // Handle Select All functionality (only select enabled items)
+  const handleSelectAll = () => {
+    const filteredValues = filteredOptions
+      .filter(option => !option.disabled) // Only include enabled options
+      .map(option => option.value);
+    const filteredSelectedValues = selectedValues.filter(value =>
+      filteredValues.includes(value),
+    );
+    const allFilteredSelected =
+      filteredSelectedValues.length === filteredValues.length;
+
+    if (allFilteredSelected) {
+      // If all filtered enabled items are selected, deselect them
+      const remainingValues = selectedValues.filter(
+        value => !filteredValues.includes(value),
+      );
+      onSelectChange(remainingValues);
+    } else {
+      // Select all enabled filtered items
+      const newSelectedValues = [
+        ...new Set([...selectedValues, ...filteredValues]),
+      ];
+      onSelectChange(newSelectedValues);
+    }
+  };
+
+  // Check if all filtered enabled items are selected - FIXED VERSION
+  const isAllFilteredSelected = useMemo(() => {
+    if (filteredOptions.length === 0) return false;
+
+    const filteredValues = filteredOptions
+      .filter(option => !option.disabled)
+      .map(option => option.value);
+
+    // Return false if there are no enabled options OR if no items are selected at all
+    if (filteredValues.length === 0 || selectedValues.length === 0) {
+      return false;
+    }
+
+    // Check if all filtered enabled items are selected
+    return (
+      filteredValues.every(value => selectedValues.includes(value)) &&
+      filteredValues.length > 0
+    );
+  }, [filteredOptions, selectedValues]);
+
+  // Render Select All Header Component
+  const renderSelectAllHeader = () => {
+    if (!showSelectAll || filteredOptions.length === 0) return null;
+
+    return (
+      <View style={styles.selectAllContainer}>
+        <TouchableOpacity
+          style={[styles.optionItem, styles.selectAllItem]}
+          onPress={handleSelectAll}>
+          <Text style={[styles.optionText, styles.selectAllText]}>
+            {searchQuery.trim() ? 'Select All Filtered' : 'Select All'}
+          </Text>
+          <MaterialIcons
+            name={
+              isAllFilteredSelected ? 'check-box' : 'check-box-outline-blank'
+            }
+            size={24}
+            color={isAllFilteredSelected ? primaryColor : '#CBD5E0'}
+          />
+        </TouchableOpacity>
+        <View style={styles.separator} />
+      </View>
+    );
+  };
+
+  const renderItem = ({item}: {item: MultiSelectOption}) => {
+    // Debug logging for disabled items
+    if (item.disabled) {
+      console.log(
+        `Rendering disabled item: ${item.label} - disabled: ${item.disabled}`,
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        style={[styles.optionItem, item.disabled && styles.disabledOption]}
+        onPress={() => toggleItem(item.value, item.disabled || false)}
+        disabled={item.disabled}>
+        <View style={styles.optionContent}>
+          <Text
+            style={[
+              styles.optionText,
+              item.disabled && styles.disabledOptionText,
+            ]}>
+            {item.label}
+          </Text>
+          {item.disabled && (
+            <Text style={styles.disabledIndicator}> (Unavailable)</Text>
+          )}
+        </View>
+        <MaterialIcons
+          name={
+            selectedValues.includes(item.value)
+              ? 'check-box'
+              : 'check-box-outline-blank'
+          }
+          size={24}
+          color={
+            item.disabled
+              ? '#E2E8F0' // Grey for disabled
+              : selectedValues.includes(item.value)
+              ? primaryColor
+              : '#CBD5E0'
+          }
+        />
+      </TouchableOpacity>
+    );
+  };
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <MaterialIcons name="search-off" size={48} color="#CBD5E0" />
+      <Text style={styles.emptyText}>No options found</Text>
+      <Text style={styles.emptySubtext}>Try adjusting your search terms</Text>
+    </View>
+  );
+
+  return (
+    <View style={[styles.container, disabled && styles.disabled]}>
+      <TouchableOpacity
+        style={styles.inputContainer}
+        onPress={handlePress}
+        disabled={disabled}>
+        <Text
+          style={[
+            selectedValues.length > 0
+              ? styles.selectedText
+              : styles.placeholderText,
+            {color: selectedValues.length > 0 ? '#333333' : '#94A3B8'},
+          ]}
+          numberOfLines={1}
+          ellipsizeMode="tail">
+          {getDisplayText()}
+        </Text>
+        <MaterialIcons name="arrow-drop-down" size={24} color="#555" />
+      </TouchableOpacity>
+
+      <Modal
+        visible={isVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleClose}>
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Items</Text>
+              <TouchableOpacity onPress={handleClose}>
+                <Text style={[styles.doneButton, {color: primaryColor}]}>
+                  Done
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <View style={styles.searchInputContainer}>
+                <MaterialIcons
+                  name="search"
+                  size={20}
+                  color="#94A3B8"
+                  style={styles.searchIcon}
+                />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={searchPlaceholder}
+                  placeholderTextColor="#94A3B8"
+                  value={searchQuery}
+                  onChangeText={text => {
+                    setSearchQuery(text);
+                    console.log('Search query updated:', text); // Debug log
+                  }}
+                  onKeyPress={({nativeEvent}) => {
+                    if (nativeEvent.key === 'Backspace' && searchQuery === '') {
+                      console.log('Backspace pressed with empty input');
+                      setSearchQuery(''); // Force empty state
+                    }
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done" // Ensure keyboard has a "done" action
+                  onSubmitEditing={() => Keyboard.dismiss()} // Dismiss keyboard on submit
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setSearchQuery('')}
+                    style={styles.clearButton}>
+                    <MaterialIcons name="clear" size={20} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Results Count */}
+            {searchQuery.trim() && (
+              <View style={styles.resultsContainer}>
+                <Text style={styles.resultsText}>
+                  {filteredOptions.length} of {options.length} options
+                </Text>
+              </View>
+            )}
+
+            <FlatList
+              data={filteredOptions}
+              keyExtractor={item => item.value}
+              extraData={searchQuery} // Ensure re-render on searchQuery change
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              renderItem={renderItem}
+              ListHeaderComponent={renderSelectAllHeader}
+              stickyHeaderIndices={
+                showSelectAll && filteredOptions.length > 0 ? [0] : []
+              }
+              contentContainerStyle={[
+                styles.optionsList,
+                filteredOptions.length === 0 && styles.emptyList,
+              ]}
+              ListEmptyComponent={searchQuery.trim() ? renderEmptyState : null}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+            />
+          </SafeAreaView>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    marginBottom: 8,
+  },
+  disabled: {
+    opacity: 0.7,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  selectedText: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+  },
+  placeholderText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: 'white',
+    marginTop: 60,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: {width: 0, height: -3},
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A202C',
+  },
+  doneButton: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F7FAFC',
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#2D3748',
+    paddingVertical: 0, // Remove default padding on Android
+  },
+  clearButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  resultsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
+  },
+  resultsText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  optionsList: {
+    paddingBottom: 20,
+  },
+  emptyList: {
+    flexGrow: 1,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F7FAFC',
+  },
+  selectAllContainer: {
+    backgroundColor: 'white', // Ensure background color for sticky header
+  },
+  selectAllItem: {
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 0,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 16,
+    marginTop: 4,
+  },
+  optionText: {
+    fontSize: 16,
+    color: '#2D3748',
+  },
+  selectAllText: {
+    fontWeight: '600',
+    color: '#1A202C',
+    fontSize: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#4A5568',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  disabledOption: {
+    opacity: 0.6, // More visible watermark effect for disabled options
+    backgroundColor: '#F1F5F9', // Slightly different background for disabled
+  },
+  disabledOptionText: {
+    color: '#94A3B8', // Greyed out text for disabled options
+    // Removed italic styling to make disabled options appear normal
+  },
+  optionContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  disabledIndicator: {
+    fontSize: 12,
+    color: '#94A3B8',
+    // Removed italic styling to make disabled indicator appear normal
+    marginLeft: 4,
+  },
+});
+
+export default MultiSelect;

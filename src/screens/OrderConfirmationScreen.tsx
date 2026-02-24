@@ -1,0 +1,2104 @@
+//OrderConfirmation.tsx
+import React, { useState, useEffect } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  Modal,
+  Dimensions,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
+  InteractionManager,
+} from 'react-native';
+import { RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+import { MainStackParamList } from '../../src/type/type';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api.config';
+
+import DateTimePicker from '@react-native-community/datetimepicker';
+import PendingOrdersScreen from './PendingOrdersScreen';
+
+const { width, height } = Dimensions.get('window');
+
+interface OrderItem {
+  ITEM_ID: number;
+  ITEM_NAME: string;
+  LOT_NO: string;
+  VAKAL_NO: string;
+  ITEM_MARKS: string;
+  UNIT_NAME: string;
+  AVAILABLE_QTY: number;
+  QUANTITY: number;
+  NET_QUANTITY: number;
+  ORDERED_QUANTITY: number;
+  BatchNo?: string | null;
+  UNIT_ID?: number;
+}
+
+interface LaborCharge {
+  id: number;
+  type: string;
+  appliedQuantity: string;
+  quantity: string;
+  selected: boolean;
+}
+
+interface OrderResponse {
+  success: boolean;
+  message: string;
+  data: {
+    orderDate: string;
+    deliveryDate: string;
+    ordersByUnit: {
+      orderId: number;
+      orderNo: string;
+      unitId: number;
+
+      itemCount: number;
+      items: {
+        ItemID: number;
+        LotNo: string;
+        Quantity: number;
+
+        AvailableQuantity: number;
+        unitName: string;
+      }[];
+    }[];
+  };
+}
+
+interface TransporterDetails {
+  name: string;
+  vehicleNo: string;
+  shopNo: string;
+}
+
+type OrderConfirmationScreenRouteProp = RouteProp<
+  MainStackParamList,
+  'OrderConfirmationScreen'
+>;
+type OrderConfirmationScreenNavigationProp = NativeStackNavigationProp<
+  MainStackParamList,
+  'OrderConfirmationScreen'
+>;
+
+interface OrderConfirmationScreenProps {
+  route: OrderConfirmationScreenRouteProp;
+  navigation: OrderConfirmationScreenNavigationProp;
+}
+
+const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
+  route,
+  navigation,
+}) => {
+  const {
+    orderItems,
+    customerID,
+    userSupervisorId,
+    CUST_DELIVERY_ADD,
+    userMukadamId,
+    stockLotLocationId,
+    unitId = 3,
+    finYearId = 15,
+  } = route.params;
+
+  // Get today's date in YYYY-MM-DD format
+  const today = new Date();
+  const formattedToday = today.toISOString().split('T')[0];
+  const [orderBy, setOrderBy] = useState('');
+  const orderByInputRef = React.useRef<TextInput>(null);
+  // Reference for picker timer
+  const datePickerTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const scrollViewRef = React.useRef<ScrollView>(null);
+
+  // Local state for order details
+  const [orderDetails, setOrderDetails] = useState({
+    orderDate: formattedToday,
+    deliveryDate: formattedToday,
+    CUST_DELIVERY_ADD: CUST_DELIVERY_ADD || '',
+    // deliveryLocation: '',
+    remarks: '',
+    laborCharges: '',
+  });
+
+  // Transporter details with subfields
+  const [transporterDetails, setTransporterDetails] =
+    useState<TransporterDetails>({
+      name: '',
+      vehicleNo: '',
+      shopNo: '',
+    });
+
+  // State for loading
+  const [isLoading, setIsLoading] = useState(false);
+  // Add these state declarations with other useState calls
+  const [orderByError, setOrderByError] = useState('');
+  const [transporterNameError, setTransporterNameError] = useState('');
+  const [deliveryLocationError, setDeliveryLocationError] = useState('');
+  const [deliveryDateError, setDeliveryDateError] = useState('');
+
+  // State for labor charges modal
+  const [isLaborModalVisible, setIsLaborModalVisible] = useState(false);
+
+  // Labor charges options
+  const [laborCharges, setLaborCharges] = useState<LaborCharge[]>([
+    {
+      id: 1,
+      type: 'LOADING(L)',
+      appliedQuantity: '1',
+      quantity: '1',
+      selected: true,
+    },
+    {
+      id: 2,
+      type: 'WEIGHT(W)',
+      appliedQuantity: '1',
+      quantity: '1',
+      selected: false,
+    },
+  ]);
+
+  // Add these to state declarations at the top of the component
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
+  const [successData, setSuccessData] = useState({
+    ordersByUnit: [] as any[],
+    formattedTransporterName: '',
+    selectedLabor: [] as any[],
+  });
+
+  // Add new state for date picker
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Add this near other state declarations
+  const [isOrderPlaced, setIsOrderPlaced] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Add new state for the resubmission alert modal
+  const [showResubmissionModal, setShowResubmissionModal] = useState(false);
+
+  // Add this useEffect hook after other useEffect hooks
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (isOrderPlaced) {
+        setOrderDetails({
+          orderDate: formattedToday,
+          deliveryDate: formattedToday,
+          CUST_DELIVERY_ADD: '',
+          remarks: '',
+          laborCharges: '',
+        });
+        setTransporterDetails({
+          name: '',
+          vehicleNo: '',
+          shopNo: '',
+        });
+        setLaborCharges([
+          {
+            id: 1,
+            type: 'LOADING(L)',
+            appliedQuantity: '1',
+            quantity: '1',
+            selected: true,
+          },
+          {
+            id: 2,
+            type: 'UNLOADING (UL)',
+            appliedQuantity: '1',
+            quantity: '1',
+            selected: false,
+          },
+          {
+            id: 3,
+            type: 'WEIGHT(W)',
+            appliedQuantity: '1',
+            quantity: '1',
+            selected: false,
+          },
+        ]);
+        setIsOrderPlaced(false);
+        setSuccessData({
+          ordersByUnit: [],
+          formattedTransporterName: '',
+          selectedLabor: [],
+        });
+        setOrderByError('');
+        setTransporterNameError('');
+        setDeliveryLocationError('');
+        setDeliveryDateError('');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, isOrderPlaced, formattedToday]);
+
+  // Add keyboard listeners to track keyboard visibility
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      },
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      },
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
+  // Handle labor charge selection
+  const toggleLaborChargeSelection = (id: number) => {
+    // Prevent unticking the first row (LOADING)
+    if (id === 1) {
+      return;
+    }
+    setLaborCharges(
+      laborCharges.map(charge =>
+        charge.id === id ? { ...charge, selected: !charge.selected } : charge,
+      ),
+    );
+  };
+
+  // Handle applied quantity change
+  const updateAppliedQuantity = (id: number, value: string) => {
+    // Only allow numeric values (no special characters, letters, etc.)
+    const numericOnly = value.replace(/[^0-9]/g, '');
+
+    setLaborCharges(
+      laborCharges.map(charge =>
+        charge.id === id ? { ...charge, appliedQuantity: numericOnly } : charge,
+      ),
+    );
+  };
+
+  // Calculate selected labor charges for display
+  const getSelectedLaborCharges = () => {
+    const selected = laborCharges.filter(charge => charge.selected);
+    if (selected.length === 0) return '';
+    return selected
+      .map(charge => `${charge.type}: ${charge.appliedQuantity}`)
+      .join(', ');
+  };
+
+  // Format the transporter name with subfields for database
+  const getFormattedTransporterName = () => {
+    let formattedName = transporterDetails.name.trim();
+
+    if (transporterDetails.vehicleNo) {
+      formattedName += ` | Vehicle: ${transporterDetails.vehicleNo.trim()}`;
+    }
+
+    if (transporterDetails.shopNo) {
+      formattedName += ` | Shop: ${transporterDetails.shopNo.trim()}`;
+    }
+
+    return formattedName;
+  };
+
+  // Update the date field handler to handle keyboard properly
+  const handleDateFieldTap = () => {
+    // Only dismiss keyboard for this specific interaction
+
+    Keyboard.dismiss();
+    // Show date picker after ensuring keyboard is dismissed
+    setTimeout(() => {
+      setShowDatePicker(true);
+    }, 10);
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  // Function to validate date format (YYYY-MM-DD)
+  const isValidDateFormat = (dateString: string) => {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    return regex.test(dateString);
+  };
+
+  // Function to check if date is valid
+  const isValidDate = (dateString: string) => {
+    if (!isValidDateFormat(dateString)) return false;
+
+    const date = new Date(dateString);
+    return !isNaN(date.getTime());
+  };
+
+  // Function to check if delivery date is not in the past
+  const isDeliveryDateValid = (dateString: string) => {
+    if (!isValidDate(dateString)) return false;
+
+    const deliveryDate = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to beginning of day for comparison
+
+    return deliveryDate >= today;
+  };
+
+  // Modified function to handle transporter name change with validation
+  const handleTransporterNameChange = (text: string) => {
+    setTransporterDetails(prev => ({ ...prev, name: text }));
+    setTransporterNameError('');
+    const letterOnlyRegex = /^[a-zA-Z\s.',-]*$/;
+    if (!letterOnlyRegex.test(text)) {
+      setTransporterNameError(
+        'Only letters, spaces, and common punctuation allowed',
+      );
+    }
+  };
+
+  const handleOrderByChange = (text: string) => {
+    setOrderBy(text);
+    setOrderByError('');
+  };
+
+  const handleDeliveryLocationChange = (text: string) => {
+    setOrderDetails(prev => ({ ...prev, CUST_DELIVERY_ADD: text }));
+    setDeliveryLocationError('');
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || new Date();
+    setShowDatePicker(Platform.OS === 'ios');
+    setSelectedDate(currentDate);
+    const formattedDate = currentDate.toISOString().split('T')[0];
+    setOrderDetails(prev => ({ ...prev, deliveryDate: formattedDate }));
+    setDeliveryDateError('');
+  };
+
+  const handleSubmitOrder = async () => {
+    if (isOrderPlaced) {
+      setShowResubmissionModal(true);
+      return;
+    }
+
+    setOrderByError('');
+    setTransporterNameError('');
+    setDeliveryLocationError('');
+    setDeliveryDateError('');
+
+    let hasError = false;
+
+    if (!orderBy.trim()) {
+      setOrderByError('Order Creator name is required');
+      hasError = true;
+    }
+
+    if (!transporterDetails.name.trim()) {
+      setTransporterNameError('Transporter Name is required');
+      hasError = true;
+    } else if (!/^[a-zA-Z\s.',-]*$/.test(transporterDetails.name)) {
+      setTransporterNameError(
+        'Only letters, spaces, and common punctuation allowed',
+      );
+      hasError = true;
+    }
+
+    if (!orderDetails.CUST_DELIVERY_ADD.trim()) {
+      setDeliveryLocationError('Delivery Location is required');
+      hasError = true;
+    }
+
+    if (!isValidDateFormat(orderDetails.deliveryDate)) {
+      setDeliveryDateError('Delivery date must be in YYYY-MM-DD format');
+      hasError = true;
+    } else if (!isValidDate(orderDetails.deliveryDate)) {
+      setDeliveryDateError('Invalid delivery date');
+      hasError = true;
+    } else if (!isDeliveryDateValid(orderDetails.deliveryDate)) {
+      setDeliveryDateError('Delivery date cannot be in the past');
+      hasError = true;
+    }
+
+    if (hasError) {
+      // Scroll to top
+      scrollViewRef.current?.scrollTo({
+        y: 0,
+        animated: true,
+      });
+
+      // Focus first required field
+      setTimeout(() => {
+        orderByInputRef.current?.focus();
+      }, 400);
+
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const selectedLabor = laborCharges
+        .filter(charge => charge.selected)
+        .map(charge => ({
+          type: charge.type,
+          quantity: charge.appliedQuantity,
+        }));
+
+      const formattedTransporterName = getFormattedTransporterName();
+
+      const orderPayload = {
+        CustomerID: customerID,
+        items: orderItems.map((item: OrderItem) => ({
+          ItemID: item.ITEM_ID,
+          LotNo: item.LOT_NO,
+          requestedQuantity: item.ORDERED_QUANTITY,
+          BatchNo: item.BatchNo === '**null**' ? null : item.BatchNo,
+          ItemMarks: item.ITEM_MARKS || '',
+          VakalNo: item.VAKAL_NO || '',
+          UnitName: item.UNIT_NAME,
+        })),
+        orderDate: orderDetails.orderDate,
+        deliveryDate: orderDetails.deliveryDate,
+        transporterName: formattedTransporterName,
+        ORDER_BY: orderBy,
+        CUST_DELIVERY_ADD: orderDetails.CUST_DELIVERY_ADD,
+        remarks: orderDetails.remarks,
+        userSupervisorId,
+        userMukadamId,
+        stockLotLocationId,
+        unitId,
+        finYearId,
+        orderMode: 'APP',
+        laborCharges: selectedLabor,
+      };
+
+      console.log(
+        'Sending order payload:',
+        JSON.stringify(orderPayload, null, 2),
+      );
+      const response = await axios.post<OrderResponse>(
+        API_ENDPOINTS.GET_PLACEORDER_DETAILS,
+        orderPayload,
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000,
+        },
+      );
+
+      console.log('Server response:', JSON.stringify(response.data, null, 2));
+      if (!response || !response.data) {
+        throw new Error('No response received from server');
+      }
+
+      if (response.data.success === true) {
+        const { ordersByUnit } = response.data.data;
+
+        if (!ordersByUnit || !ordersByUnit.length) {
+          throw new Error('Missing order details in success response');
+        }
+
+        const processedOrdersByUnit = ordersByUnit.map(unitOrder => {
+          const unitItemIds = new Set(unitOrder.items.map(item => item.ItemID));
+          const processedItems = orderItems
+            .filter(item => unitItemIds.has(item.ITEM_ID))
+            .map(item => ({
+              ...item,
+              FK_ORDER_ID: unitOrder.orderId,
+              FK_ITEM_ID: item.ITEM_ID,
+              STATUS: 'NEW',
+              REMARK: orderDetails.remarks,
+            }));
+
+          return { ...unitOrder, processedItems };
+        });
+
+        setSuccessData({
+          ordersByUnit: processedOrdersByUnit,
+          formattedTransporterName: getFormattedTransporterName(),
+          selectedLabor,
+        });
+        setIsOrderPlaced(true);
+        setShowSuccessModal(true);
+      } else {
+        throw new Error(
+          response.data.message || 'Server returned unsuccessful response',
+        );
+      }
+    } catch (error: any) {
+      console.error('Error submitting order:', error.message);
+      Alert.alert('Error', error.message || 'Failed to place order');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const proceedWithLaborCharges = () => {
+    setIsLaborModalVisible(false);
+    setOrderDetails(prev => ({
+      ...prev,
+      laborCharges: getSelectedLaborCharges(),
+    }));
+  };
+
+  useEffect(() => {
+    // Clean up any timers on unmount
+    return () => {
+      if (datePickerTimerRef.current) {
+        clearTimeout(datePickerTimerRef.current);
+        datePickerTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <View style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.mainContainer}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollContainer}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
+        >
+          <View style={styles.cardContainer}>
+            <View style={styles.sectionHeader}>
+              <MaterialIcons name="person-pin" size={24} color="#2C3E50" />
+              <Text style={styles.sectionTitle}>Order By</Text>
+              <Text style={{ color: 'red' }}> *</Text>
+            </View>
+            <View style={styles.field}>
+              {/* <Text style={styles.fieldLabel}>Order By</Text> */}
+              <View style={styles.field}>
+                <View style={styles.inputContainer}>
+                  <MaterialIcons
+                    name="person"
+                    size={20}
+                    color="#718096"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    ref={orderByInputRef}
+                    style={[
+                      styles.fieldInput,
+                      styles.inputWithIcon,
+                      { fontSize: orderBy ? 16 : 13 },
+                    ]}
+                    value={orderBy}
+                    onChangeText={handleOrderByChange}
+                    placeholder="Enter order creator name"
+                    placeholderTextColor={'grey'}
+                  />
+                </View>
+                {orderByError ? (
+                  <Text style={styles.errorText}>{orderByError}</Text>
+                ) : null}
+              </View>
+            </View>
+            {/* Transporter Details Section */}
+            <View style={styles.sectionHeader}>
+              <MaterialIcons name="local-shipping" size={24} color="#2C3E50" />
+              <Text style={styles.sectionTitle}>Transporter Details</Text>
+            </View>
+
+            {/* Transporter Name */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Transporter Name <Text style={{ color: 'red' }}> *</Text>
+              </Text>
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="person"
+                  size={20}
+                  color="#718096"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.fieldInput, styles.inputWithIcon]}
+                  value={transporterDetails.name}
+                  onChangeText={handleTransporterNameChange}
+                />
+              </View>
+              {transporterNameError ? (
+                <Text style={styles.errorText}>{transporterNameError}</Text>
+              ) : null}
+            </View>
+
+            {/* Vehicle Number */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Vehicle No (Optional)</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons
+                  name="directions-car"
+                  size={20}
+                  color="#718096"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.fieldInput, styles.inputWithIcon]}
+                  value={transporterDetails.vehicleNo}
+                  onChangeText={text =>
+                    setTransporterDetails(prev => ({
+                      ...prev,
+                      vehicleNo: text,
+                    }))
+                  }
+                  // placeholder="Enter vehicle number"
+                />
+              </View>
+            </View>
+
+            {/* Shop Number */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Shop No (Optional)</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons
+                  name="store"
+                  size={20}
+                  color="#718096"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.fieldInput, styles.inputWithIcon]}
+                  value={transporterDetails.shopNo}
+                  onChangeText={text =>
+                    setTransporterDetails(prev => ({ ...prev, shopNo: text }))
+                  }
+                  // placeholder="Enter shop number"
+                />
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Order Date */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Order Date</Text>
+              <View style={styles.dateInputContainer}>
+                <View style={styles.dateInputContent}>
+                  <MaterialIcons
+                    name="event"
+                    size={20}
+                    color="#718096"
+                    style={styles.inputIcon}
+                  />
+                  <Text style={styles.dateText}>
+                    {formatDate(orderDetails.orderDate)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Delivery Date */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Delivery Date <Text style={{ color: 'red' }}> *</Text>
+              </Text>
+              <TouchableWithoutFeedback onPress={handleDateFieldTap}>
+                <View
+                  style={[styles.dateInputContainer, { position: 'relative' }]}
+                >
+                  <View style={styles.dateInputContent}>
+                    <MaterialIcons
+                      name="event-available"
+                      size={20}
+                      color="#718096"
+                      style={styles.inputIcon}
+                    />
+                    <Text style={styles.dateText}>
+                      {formatDate(orderDetails.deliveryDate)}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+              {deliveryDateError ? (
+                <Text style={styles.errorText}>{deliveryDateError}</Text>
+              ) : null}
+              {showDatePicker && Platform.OS === 'android' && (
+                <DateTimePicker
+                  testID="datePickerAndroid"
+                  value={selectedDate}
+                  mode="date"
+                  display="default"
+                  textColor="#0284c7"
+                  onChange={onDateChange}
+                  minimumDate={new Date()}
+                />
+              )}
+            </View>
+
+            {/* Delivery Location Field */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>
+                Delivery Location <Text style={{ color: 'red' }}> *</Text>
+              </Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons
+                  name="location-on"
+                  size={20}
+                  color="#718096"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.fieldInput, styles.inputWithIcon]}
+                  value={orderDetails.CUST_DELIVERY_ADD}
+                  onChangeText={handleDeliveryLocationChange}
+                  multiline
+                  numberOfLines={2}
+                />
+              </View>
+              {deliveryLocationError ? (
+                <Text style={styles.errorText}>{deliveryLocationError}</Text>
+              ) : null}
+            </View>
+
+            {/* Remarks Field */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Remarks</Text>
+              <View style={[styles.inputContainer, styles.remarksContainer]}>
+                <View style={styles.remarksIconContainer}>
+                  <MaterialIcons name="notes" size={20} color="#718096" />
+                </View>
+                <TextInput
+                  style={[
+                    styles.fieldInput,
+                    styles.inputWithIcon,
+                    styles.remarksInput,
+                  ]}
+                  value={orderDetails.remarks}
+                  onChangeText={text =>
+                    setOrderDetails(prev => ({ ...prev, remarks: text }))
+                  }
+                  // placeholder="Add any special instructions"
+                  multiline
+                  numberOfLines={100}
+                  textAlignVertical="top"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Order Summary */}
+          <View style={styles.itemsSummary}>
+            <View style={styles.summaryHeader}>
+              <MaterialIcons name="receipt-long" size={24} color="#2C3E50" />
+              <Text style={styles.summaryTitle}>Order Summary</Text>
+            </View>
+            {orderItems.map((item: OrderItem, index: number) => (
+              <View key={index} style={styles.itemRow}>
+                <View style={styles.itemInfo}>
+                  <MaterialIcons name="inventory" size={20} color="#4A5568" />
+                  <View style={styles.itemDetails}>
+                    <Text style={styles.itemName}>
+                      {item.ITEM_NAME || `Item ${item.ITEM_ID}`}
+                    </Text>
+                    <Text style={styles.unitName}>
+                      {item.UNIT_NAME || 'Unit not specified'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.quantityBadge}>
+                  <Text style={styles.itemQuantity}>
+                    {item.ORDERED_QUANTITY}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {/* Submit Button */}
+          <View style={styles.submitButtonContainer}>
+            <TouchableOpacity
+              style={[styles.submitButton, isLoading && styles.disabledButton]}
+              onPress={handleSubmitOrder}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator color="#FFFFFF" />
+                  <Text style={styles.buttonText}>Processing...</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Confirm Order</Text>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={24}
+                    style={{ color: '#FFFFFF' }}
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        <Modal
+          visible={showDatePicker && Platform.OS === 'ios'}
+          transparent={true}
+          animationType="slide"
+        >
+          <View style={styles.iosDatePickerModal}>
+            <View style={styles.iosDatePickerContainer}>
+              <View style={styles.iosDatePickerHeader}>
+                <Text style={styles.iosDatePickerTitle}>
+                  Select Delivery Date
+                </Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.iosDatePickerDoneBtn}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                testID="datePickerIOS"
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  if (date) setSelectedDate(date);
+                }}
+                minimumDate={new Date()}
+                style={styles.iosDatePicker}
+                textColor="#000000"
+              />
+              <TouchableOpacity
+                style={styles.iosDatePickerConfirmBtn}
+                onPress={() => {
+                  onDateChange({}, selectedDate);
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.iosDatePickerConfirmText}>
+                  Confirm Date
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Success Modal */}
+        <Modal
+          visible={showSuccessModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowSuccessModal(false)}
+        >
+          <View style={styles.successModalOverlay}>
+            <View style={styles.successModalContent}>
+              <View style={styles.successHeader}>
+                <View
+                  // colors={['#4CAF50', '#45a049']}
+                  style={styles.successIconCircle}
+                >
+                  <Ionicons name="checkmark-sharp" size={40} color="#FFFFFF" />
+                </View>
+                <Text style={styles.successTitle}>
+                  Order Placed Successfully!
+                </Text>
+              </View>
+
+              <View style={styles.ordersContainer}>
+                {successData.ordersByUnit.map((order, index) => (
+                  <View key={index} style={styles.compactOrderCard}>
+                    <View style={styles.compactOrderDetails}>
+                      <Text style={styles.orderNoText}>#{order.orderNo}</Text>
+                      <Text style={styles.unitText}>{order.unitName}</Text>
+                      <Text style={styles.itemCountText}>
+                        {order.itemCount} items
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.successButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.viewOrderButton}
+                  onPress={() => {
+                    setShowSuccessModal(false);
+                    // Navigate to Orders screen
+                    navigation.navigate('BottomTabNavigator', {
+                      screen: 'Orders',
+                      customerID: customerID,
+                      params: {
+                        screen: 'OrdersHome',
+                        params: {
+                          shouldRefresh: true,
+                          customerID: customerID,
+                        },
+                      },
+                    });
+
+                    // If there's just one order, navigate directly to it
+                    if (successData.ordersByUnit.length >= 1) {
+                      const order = successData.ordersByUnit[0];
+                      setTimeout(() => {
+                        return navigation.navigate('PendingOrdersScreen', {
+                          orderId: order.orderId,
+                          orderNo: order.orderNo,
+                          transporterName: successData.formattedTransporterName,
+                          orderBy: order.orderBy,
+                          deliveryDate: orderDetails.deliveryDate,
+                          deliveryAddress: orderDetails.CUST_DELIVERY_ADD,
+                          orderDate: orderDetails.orderDate,
+                          items: order.processedItems,
+                          customerID: customerID,
+                          unitId: unitId,
+                        });
+                      }, 100);
+                    }
+                  }}
+                >
+                  <View
+                    // colors={['#0284c7', '#0264a7']}
+                    style={styles.viewOrderGradient}
+                  >
+                    <MaterialIcons
+                      name="visibility"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.viewOrderText}>
+                      {successData.ordersByUnit.length > 1
+                        ? 'View Orders'
+                        : 'View Order'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Validation Error Modal */}
+        <Modal
+          visible={showValidationModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowValidationModal(false)}
+        >
+          <View style={styles.validationModalOverlay}>
+            <View style={styles.validationModalContent}>
+              <View
+                // colors={['#F8FAFC', '#EDF2F7']}
+                style={styles.validationModalHeader}
+              >
+                <MaterialIcons name="info-outline" size={30} color="#dc3545" />
+                <Text style={styles.validationHeaderText}>
+                  Missing Required Information
+                </Text>
+              </View>
+
+              <View style={styles.validationBodyContainer}>
+                {validationMessage.split('\n').map((message, index) =>
+                  index === 0 ? (
+                    <Text key={index} style={styles.validationMainMessage}>
+                      {message}
+                    </Text>
+                  ) : (
+                    <View key={index} style={styles.validationItemRow}>
+                      <MaterialIcons
+                        name="error-outline"
+                        size={18}
+                        color="#dc3545"
+                      />
+                      <Text style={styles.validationItemText}>{message}</Text>
+                    </View>
+                  ),
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.validationActionButton}
+                onPress={() => setShowValidationModal(false)}
+              >
+                <Text style={styles.validationActionButtonText}>Got It!</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Resubmission Alert Modal */}
+        <Modal
+          visible={showResubmissionModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowResubmissionModal(false)}
+        >
+          <View style={styles.resubmissionModalOverlay}>
+            <View style={styles.resubmissionModalContent}>
+              <View style={styles.resubmissionIconContainer}>
+                <View
+                  // colors={['#FF6B6B', '#FF5252']}
+                  style={styles.resubmissionIconCircle}
+                >
+                  <MaterialIcons name="warning" size={40} color="#FFFFFF" />
+                </View>
+              </View>
+              <View style={styles.resubmissionTextContainer}>
+                <Text style={styles.resubmissionTitle}>Already Submitted!</Text>
+                <Text style={styles.resubmissionMessage}>
+                  This order has already been placed successfully. Please start
+                  a new order.
+                </Text>
+              </View>
+              <View style={styles.resubmissionButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.resubmissionButton}
+                  onPress={() => {
+                    setShowResubmissionModal(false);
+                    navigation.goBack();
+                  }}
+                >
+                  <View
+                    // colors={['#4CAF50', '#45a049']}
+                    style={styles.resubmissionButtonGradient}
+                  >
+                    <MaterialIcons
+                      name="arrow-back"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.resubmissionButtonText}>Go Back</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </KeyboardAvoidingView>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F5F7FA',
+  },
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#FFFAFA',
+    elevation: 2,
+  },
+
+  scrollContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  cardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginLeft: 8,
+  },
+  field: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#34495E',
+    marginBottom: 8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  inputIcon: {
+    padding: 12,
+  },
+  inputWithIcon: {
+    flex: 1,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    paddingLeft: 0,
+  },
+  fieldInput: {
+    padding: 12,
+    fontSize: 16,
+    color: '#2C3E50',
+    borderRadius: 12,
+  },
+  disabledInput: {
+    backgroundColor: '#EDF2F7',
+    color: '#718096',
+  },
+  remarksInput: {
+    flex: 1,
+    height: 120,
+    paddingTop: 12,
+    paddingBottom: 1,
+    paddingRight: 12,
+    fontSize: 15,
+    color: '#2D3748',
+    textAlignVertical: 'top',
+  },
+  helperText: {
+    color: '#718096',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 12,
+  },
+  errorText: {
+    color: '#dc3545',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 40,
+  },
+  // iOS date picker modal styles
+  iosDatePickerModal: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  iosDatePickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+    }),
+  },
+  iosDatePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  iosDatePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  iosDatePickerDoneBtn: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0284c7',
+  },
+  iosDatePicker: {
+    height: 200,
+    marginTop: 10,
+  },
+  iosDatePickerConfirmBtn: {
+    backgroundColor: '#0284c7',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 5,
+  },
+  iosDatePickerConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Fix modal styles for iOS
+  // Update existing modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: Platform.OS === 'ios' ? height * 0.7 : height * 0.8,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 20,
+  },
+  laborHeadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  laborTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedLaborContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F5FF',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6B46C1',
+  },
+  selectedLaborText: {
+    fontSize: 14,
+    color: '#4A5568',
+    marginLeft: 8,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6B46C1',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 6,
+  },
+  editButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  itemsSummary: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginLeft: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  itemInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 14,
+    color: '#2C3E50',
+    marginLeft: 8,
+    flex: 1,
+  },
+  quantityBadge: {
+    backgroundColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  itemQuantity: {
+    fontSize: 14,
+    color: '#2C3E50',
+    fontWeight: '500',
+  },
+  submitButtonContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 40,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  submitButton: {
+    backgroundColor: '#0284c7',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  disabledButton: {
+    backgroundColor: '#A0AEC0',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  modalTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    marginLeft: 8,
+  },
+  closeModalButton: {
+    padding: 4,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tableHeaderCell: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  laborItemsContainer: {
+    maxHeight: 250,
+  },
+  laborItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  evenRow: {
+    backgroundColor: '#F7FAFC',
+  },
+  laborItemText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#CBD5E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxSelected: {
+    backgroundColor: '#6B46C1',
+    borderColor: '#3B82F6',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  quantityInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E0',
+    borderRadius: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    width: '100%',
+    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+    textAlign: 'center',
+  },
+  disabledQuantityInput: {
+    backgroundColor: '#F1F5F9',
+    color: '#94A3B8',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginTop: 20,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 16,
+    gap: 10,
+  },
+  webModalButton: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 4,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#6B46C1',
+    color: '#FFFFFF',
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  webModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  webCloseButton: {
+    borderColor: '#E2E8F0',
+    backgroundColor: '#ccc',
+  },
+  webCloseButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  dateInputContainer: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    paddingHorizontal: 12,
+  },
+  dateInputContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    color: '#0284c7',
+    flex: 1,
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#2C3E50',
+    marginLeft: 1,
+  },
+  remarksContainer: {
+    minHeight: 120,
+    padding: 0,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  remarksIconContainer: {
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+  },
+  checkboxDisabled: {
+    backgroundColor: '#6B46C1',
+    borderColor: '#3B82F6',
+    opacity: 0.8,
+  },
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  successModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+
+  successIconContainer: {
+    marginBottom: Platform.OS === 'ios' ? 12 : 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#4CAF50',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  successIconCircle: {
+    width: Platform.OS === 'ios' ? 54 : 58,
+    height: Platform.OS === 'ios' ? 54 : 58,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    color: '#45a049',
+    backgroundColor: '#4CAF50',
+  },
+  successTextContainer: {
+    alignItems: 'center',
+    marginBottom: Platform.OS === 'ios' ? 12 : 16,
+    width: '100%',
+  },
+  successEmoji: {
+    fontSize: Platform.OS === 'ios' ? 28 : 32,
+    marginBottom: Platform.OS === 'ios' ? 12 : 16,
+  },
+  successTitle: {
+    fontSize: Platform.OS === 'ios' ? 17 : 18,
+    fontWeight: 'bold',
+    color: '#1A202C',
+    marginBottom: 10,
+    marginTop: 10,
+    textAlign: 'center',
+    width: '100%',
+  },
+  orderNumberContainer: {
+    backgroundColor: '#F7FAFC',
+    borderRadius: 12,
+    padding: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  orderNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderNoLabel: {
+    fontSize: 14,
+    color: '#718096',
+    marginRight: 8,
+  },
+  orderNoValue: {
+    fontSize: 16,
+    color: '#0284c7',
+    fontWeight: '600',
+  },
+  successButtonsContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  viewOrderButton: {
+    width: '70%',
+    height: Platform.OS === 'ios' ? 45 : 45, // Explicit height
+    overflow: 'hidden',
+    borderRadius: 12,
+    backgroundColor: '#0284c7', // Fallback color
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#6B46C1',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  viewOrderGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    color: '#0264a7',
+  },
+  viewOrderText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  // Validation modal styles
+  validationModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  validationModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    overflow: 'hidden',
+    alignItems: 'center',
+    minHeight: 180,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  validationModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: -5,
+    padding: Platform.OS === 'ios' ? 3 : 25,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    marginTop: 10,
+    width: '100%',
+    color: '#EDF2F7',
+  },
+  validationHeaderText: {
+    fontSize: Platform.OS === 'ios' ? 16 : 16,
+    fontWeight: 'bold',
+    color: '#dc3545',
+    marginLeft: 3,
+    // marginTop: -12,
+  },
+  validationBodyContainer: {
+    width: '89%',
+    paddingHorizontal: 17,
+    paddingVertical: 16,
+    paddingTop: Platform.OS === 'ios' ? 14 : 18,
+    paddingBottom: Platform.OS === 'ios' ? 14 : 18,
+  },
+  validationMainMessage: {
+    fontSize: Platform.OS === 'ios' ? 14 : 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: Platform.OS === 'ios' ? 10 : 12,
+    textAlign: 'center',
+  },
+  validationItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Platform.OS === 'ios' ? 6 : 8,
+    backgroundColor: '#EFF6FF',
+    padding: Platform.OS === 'ios' ? 8 : 10,
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc3545',
+  },
+  validationItemText: {
+    fontSize: Platform.OS === 'ios' ? 12 : 13,
+    color: '#4B5563',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: Platform.OS === 'ios' ? 16 : 18,
+  },
+  validationActionButton: {
+    backgroundColor: '#0284c7',
+    borderRadius: 10,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 10,
+    paddingHorizontal: 20,
+    // paddingVertical: 10,
+    width: '40%',
+    alignItems: 'center',
+    marginBottom: Platform.OS === 'ios' ? 10 : 16,
+    marginTop: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  validationActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: Platform.OS === 'ios' ? 15 : 15,
+    fontWeight: '600',
+  },
+  resubmissionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  resubmissionModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 32,
+    width: '85%',
+    maxWidth: 400,
+    alignItems: 'center',
+    maxHeight: Platform.OS === 'ios' ? height * 0.7 : undefined,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
+  },
+  resubmissionIconContainer: {
+    marginBottom: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FF5252',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  resubmissionTextContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  resubmissionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FF5252',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  resubmissionMessage: {
+    fontSize: 16,
+    color: '#4A5568',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  resubmissionButtonsContainer: {
+    width: '100%',
+  },
+  resubmissionButton: {
+    width: '100%',
+    overflow: 'hidden',
+    borderRadius: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#4CAF50',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  resubmissionIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    color: '#FF5252',
+  },
+  resubmissionButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    gap: 8,
+    color: '#45a049',
+  },
+  resubmissionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // errorText: {
+  //   color: '#dc3545',
+  //   fontSize: 12,
+  //   marginTop: 4,
+  //   marginLeft: 12,
+  // },
+  multipleOrdersContainer: {
+    width: '100%',
+    marginTop: 10,
+  },
+  multipleOrdersText: {
+    fontSize: 15,
+    color: '#2C3E50',
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  ordersScrollView: {
+    maxHeight: height * 0.3,
+  },
+  ordersScrollViewContent: {
+    paddingVertical: 5,
+  },
+  orderCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  orderUnitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  orderUnitLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    marginRight: 5,
+  },
+  orderUnitValue: {
+    fontSize: 14,
+    color: '#2C3E50',
+    fontWeight: '500',
+  },
+  orderItemsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  orderItemsLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    marginRight: 5,
+  },
+  orderItemsValue: {
+    fontSize: 14,
+    color: '#2C3E50',
+    fontWeight: '500',
+  },
+  // Add these to your existing styles object
+  itemDetails: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  unitName: {
+    fontSize: 12,
+    color: '#718096',
+    marginTop: 2,
+    marginLeft: 7,
+  },
+  successHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    width: '100%',
+  },
+  singleOrderContainer: {
+    width: '100%',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  orderDetailCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  orderDetailRow: {
+    flexDirection: 'row',
+    // justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+  },
+  orderDetailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A5568',
+  },
+  orderDetailValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#2D3748',
+  },
+  orderCardGradient: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+  },
+  orderCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  orderCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2D3748',
+    marginLeft: 8,
+  },
+
+  ordersContainer: {
+    width: '100%',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    paddingStart: 5,
+  },
+  compactOrderCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    marginBottom: 10,
+    padding: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+    width: '100%',
+  },
+  compactOrderDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  orderNoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0284c7',
+    flex: 0.8,
+    minWidth: 90,
+  },
+  unitText: {
+    fontSize: 14,
+    color: '#4A5568',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 4,
+    minWidth: 70,
+  },
+  itemCountText: {
+    fontSize: 14,
+    color: '#718096',
+    flex: 0.8,
+    textAlign: 'right',
+    minWidth: 60,
+  },
+});
+
+export default OrderConfirmationScreen;

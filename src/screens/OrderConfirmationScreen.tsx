@@ -1071,11 +1071,7 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
                     // colors={['#4CAF50', '#45a049']}
                     style={styles.resubmissionButtonGradient}
                   >
-                    <MaterialIcons
-                      name="arrow-back"
-                      size={20}
-                      color="#FFFFFF"
-                    />
+                    <MaterialIcons name="arrow-back" size={20} color="black" />
                     <Text style={styles.resubmissionButtonText}>Go Back</Text>
                   </View>
                 </TouchableOpacity>
@@ -1830,11 +1826,12 @@ const styles = StyleSheet.create({
   resubmissionModalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 32,
+    padding: 2,
     width: '85%',
+    height: Platform.OS === 'ios' ? 'auto' : 320,
     maxWidth: 400,
     alignItems: 'center',
-    maxHeight: Platform.OS === 'ios' ? height * 0.7 : undefined,
+    maxHeight: Platform.OS === 'ios' ? height * 0.7 : height * 0.5,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -1863,13 +1860,13 @@ const styles = StyleSheet.create({
   },
   resubmissionTextContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 3,
   },
   resubmissionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FF5252',
-    marginBottom: 16,
+    marginBottom: 1,
     textAlign: 'center',
   },
   resubmissionMessage: {
@@ -1889,11 +1886,11 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#4CAF50',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.1,
         shadowRadius: 6,
       },
       android: {
-        elevation: 6,
+        elevation: 0,
       },
     }),
   },
@@ -1910,12 +1907,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     gap: 8,
     color: '#45a049',
   },
   resubmissionButtonText: {
-    color: '#FFFFFF',
+    color: '#2C3E50',
     fontSize: 16,
     fontWeight: '600',
   },

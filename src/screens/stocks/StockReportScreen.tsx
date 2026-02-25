@@ -182,7 +182,6 @@ const requestStoragePermission = async () => {
   try {
     // For Android 13+ (API level 33+)
     if ((Platform.Version as number) >= 33) {
-      // For Android 13+, we need to request specific permissions
       const permissions = [
         PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
         PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
@@ -191,7 +190,6 @@ const requestStoragePermission = async () => {
 
       const granted = await PermissionsAndroid.requestMultiple(permissions);
 
-      // Check if all permissions are granted
       const allGranted = Object.values(granted).every(
         status => status === PermissionsAndroid.RESULTS.GRANTED,
       );
@@ -200,7 +198,6 @@ const requestStoragePermission = async () => {
     }
     // For Android 10-12 (API level 29-32)
     else if ((Platform.Version as number) >= 29) {
-      // For Android 10+, we need WRITE_EXTERNAL_STORAGE permission
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
         {
@@ -284,6 +281,9 @@ const StockReportScreen: React.FC = () => {
   // State for subcategories
   const [subCategories, setSubCategories] = useState<SubCategoryItem[]>([]);
   const [subCategoryLoading, setSubCategoryLoading] = useState(false);
+
+  // Track the active subcategory fetch so stale responses are ignored
+  const subCategoryFetchId = useRef<number>(0);
 
   // Format date for display
   const formatDisplayDate = (date: Date | null): string => {
@@ -372,81 +372,62 @@ const StockReportScreen: React.FC = () => {
     }
   }, [stockData]);
 
-  // Fetch subcategories from StockCategorySubAvailability or ZeroStockCatSubAvailability API
-  useEffect(() => {
-    const fetchSubCategories = async () => {
-      try {
-        setSubCategoryLoading(true);
+  // Called explicitly when dates are confirmed or Zero Stock is toggled.
+  // NOT a useEffect — avoids accidental re-triggers from search/re-renders.
+  const fetchSubCategories = async (
+    from: string,
+    to: string,
+    zeroStock: boolean,
+  ) => {
+    try {
+      setSubCategoryLoading(true);
+      setSubCategories([]);
 
-        const customerID = await getSecureOrAsyncItem('customerID');
-        const customerName = await getSecureOrAsyncItem('Disp_name');
-        if (!customerID || !customerName) {
-          console.error('Customer ID or Name not found');
-          return;
-        }
+      const id = await getSecureOrAsyncItem('customerID');
+      const name = await getSecureOrAsyncItem('Disp_name');
 
-        // Use current date range or fallback
-        const from = fromDate ? formatApiDate(fromDate) : null;
-        const to = toDate ? formatApiDate(toDate) : null;
-
-        if (!from || !to) {
-          setSubCategories([]);
-          setSubCategoryLoading(false);
-          console.log(
-            '[SubCategory API] Skipped fetch: fromDate or toDate not selected.',
-          );
-          return;
-        }
-
-        const payload = {
-          customerID: Number(customerID),
-          customerName: customerName,
-          lotNo: null,
-          vakaNo: null,
-          itemSubCategory: null,
-          itemMarks: null,
-          unit: null,
-          fromDate: from,
-          toDate: to,
-          qtyLessThan: null,
-        };
-
-        const endpoint = isZeroStock
-          ? API_ENDPOINTS.GET_ZERO_CATEGORIES
-          : API_ENDPOINTS.GET_STOCK_CATEGORIES;
-
-        console.log('[SubCategory API] Using endpoint:', endpoint);
-        console.log(
-          '[SubCategory API] Payload:',
-          JSON.stringify(payload, null, 2),
-        );
-
-        const response = await axios.post(endpoint, payload, {
-          headers: DEFAULT_HEADERS,
-        });
-
-        console.log('[SubCategory API] Response:', response.data);
-
-        if (response.data && Array.isArray(response.data.allSubCategories)) {
-          setSubCategories(response.data.allSubCategories);
-        } else {
-          setSubCategories([]);
-          console.error(
-            'Invalid response format for subcategories:',
-            response.data,
-          );
-        }
-      } catch (error) {
-        setSubCategories([]);
-        console.error('Error fetching subcategories:', error);
-      } finally {
+      if (!id || !name) {
+        console.error('[SubCategory API] customerID or Disp_name missing');
         setSubCategoryLoading(false);
+        return;
       }
-    };
 
-    fetchSubCategories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromDate, toDate, isZeroStock]);
+      const endpoint = zeroStock
+        ? API_ENDPOINTS.GET_ZERO_CATEGORIES
+        : API_ENDPOINTS.GET_STOCK_CATEGORIES;
+
+      const payload = {
+        customerID: Number(id),
+        customerName: name,
+        lotNo: null,
+        vakaNo: null,
+        itemSubCategory: null,
+        itemMarks: null,
+        unit: null,
+        fromDate: from,
+        toDate: to,
+        qtyLessThan: null,
+      };
+
+      console.log('[SubCategory API] Fetching:', endpoint, payload);
+
+      const response = await axios.post(endpoint, payload, {
+        headers: DEFAULT_HEADERS,
+      });
+
+      if (response.data && Array.isArray(response.data.allSubCategories)) {
+        setSubCategories(response.data.allSubCategories);
+      } else {
+        setSubCategories([]);
+        console.error('[SubCategory API] Unexpected response:', response.data);
+      }
+    } catch (error) {
+      setSubCategories([]);
+      console.error('[SubCategory API] Error:', error);
+    } finally {
+      setSubCategoryLoading(false);
+    }
+  };
 
   // Fetch display name and customer ID
   useEffect(() => {
@@ -477,36 +458,41 @@ const StockReportScreen: React.FC = () => {
     { label: displayName, value: displayName },
   ];
 
-  // Update item subcategory options to use API data (with disabled/greyed-out logic)
-  const itemSubCategoryOptions =
-    !fromDate || !toDate
-      ? [{ label: 'Select From and To Date first', value: '', disabled: true }]
-      : subCategories
-          .slice()
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map(item => ({
-            label: item.name,
-            value: item.name, // Use name as value for selection
-            disabled: item.available === false,
-          }));
+  // FIX 1: Only build subcategory options when both dates are selected.
+  // When dates are missing, itemSubCategoryOptions is an empty array and
+  // the entire field is hidden (see JSX below), avoiding any confusion.
+  const datesSelected = !!fromDate && !!toDate;
+
+  const itemSubCategoryOptions = datesSelected
+    ? subCategories
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(item => ({
+          label: item.name,
+          value: item.name,
+          disabled: item.available === false,
+        }))
+    : [];
 
   const unitOptions = [
     { label: 'D-39', value: 'D-39' },
     { label: 'D-514', value: 'D-514' },
   ];
 
-  // Toggle Zero Stock checkbox
+  // FIX 3: Toggle Zero Stock without immediately clearing stockData/allStockData
+  // to prevent the brief UI layout shift. Data is cleared only when a new search
+  // is actually executed (inside handleSearch).
   const toggleZeroStock = () => {
     setIsZeroStock(previousState => {
       const newState = !previousState;
       console.log('Zero Stock toggled:', newState);
-
-      // Clear previous results when toggling
-      setStockData([]);
-      setAllStockData([]);
-      // Clear selected subcategories when toggling
       setItemSubCategory([]);
-
+      // Re-fetch subcategories with the new toggle state if dates are ready
+      if (fromDate && toDate) {
+        const from = formatApiDate(fromDate)!;
+        const to = formatApiDate(toDate)!;
+        fetchSubCategories(from, to, newState);
+      }
       return newState;
     });
   };
@@ -522,7 +508,6 @@ const StockReportScreen: React.FC = () => {
     const paginatedData = data.slice(startIndex, endIndex);
     setStockData(paginatedData);
 
-    // Update pagination info
     setPagination(prev => ({
       ...prev,
       currentPage: page,
@@ -635,43 +620,43 @@ const StockReportScreen: React.FC = () => {
       </View>
     );
   };
+
   // Updated useEffect to scroll to results when data loads
   useEffect(() => {
     if (stockData.length > 0 && !isLoading) {
-      // Small delay to ensure the table is rendered
       setTimeout(() => {
         if (resultsRef.current && scrollViewRef.current) {
           resultsRef.current.measureLayout(
             scrollViewRef.current.getScrollableNode(),
             (x, y) => {
-              // Scroll to the table with some offset from top
               scrollViewRef.current?.scrollTo({
-                y: y + 20, // 20px offset from top
+                y: y + 20,
                 animated: true,
               });
             },
             () => {
-              // Fallback if measureLayout fails
               scrollViewRef.current?.scrollToEnd({ animated: true });
             },
           );
         }
-      }, 300); // Increased delay to ensure table is fully rendered
+      }, 300);
     }
   }, [stockData, isLoading]);
 
   // Updated handleSearch function
   const handleSearch = async () => {
-    setHasSearched(true); // Indicate that a search has been attempted
+    setHasSearched(true);
     setErrorMessage(null);
-    setStockData([]); // Clear previous data immediately
-    setAllStockData([]); // Clear previous data immediately
+    // FIX 3: Clear data here (on explicit search action) instead of on toggle,
+    // so the layout shift only happens intentionally when user taps Search.
+    setStockData([]);
+    setAllStockData([]);
     setTotalRecords(0);
     setIsScrollingToResults(true);
 
     setPagination({
       ...pagination,
-      currentPage: 1, // Reset to first page on new search
+      currentPage: 1,
     });
 
     try {
@@ -698,7 +683,7 @@ const StockReportScreen: React.FC = () => {
           totalPages: totalPages || 1,
         }));
 
-        const startIndex = 0; // First page
+        const startIndex = 0;
         const endIndex = pagination.itemsPerPage;
         const paginatedData = fetchedData.slice(startIndex, endIndex);
         setStockData(paginatedData);
@@ -732,7 +717,6 @@ const StockReportScreen: React.FC = () => {
 
   // Fetch regular stock report items
   const fetchStockReportItems = async () => {
-    // Prepare the request payload matching the API structure shown in screenshot
     const payload = {
       customerName: customerName || null,
       lotNo: lotNo ? Number(lotNo) : null,
@@ -750,7 +734,6 @@ const StockReportScreen: React.FC = () => {
     console.log(`Using API endpoint: ${apiEndpoint}`);
     console.log('Request payload:', JSON.stringify(payload, null, 2));
 
-    // Make the API call
     const response = await axios.post(apiEndpoint, payload, {
       headers: DEFAULT_HEADERS,
     });
@@ -771,7 +754,7 @@ const StockReportScreen: React.FC = () => {
         console.log('No records found');
       }
 
-      return data; // Return the data so we can use it immediately
+      return data;
     } else {
       throw new Error(result.message || 'Failed to fetch stock report data');
     }
@@ -779,7 +762,6 @@ const StockReportScreen: React.FC = () => {
 
   // Fetch zero stock items
   const fetchZeroStockItems = async () => {
-    // Format request to match the Zero Stock API using the same structure as regular stock report
     const payload = {
       customerName: customerName || null,
       lotNo: lotNo ? Number(lotNo) : null,
@@ -800,7 +782,6 @@ const StockReportScreen: React.FC = () => {
       JSON.stringify(payload, null, 2),
     );
 
-    // Make the API call
     const response = await axios.post(apiEndpoint, payload, {
       headers: DEFAULT_HEADERS,
     });
@@ -827,7 +808,7 @@ const StockReportScreen: React.FC = () => {
         console.log('No zero stock records found');
       }
 
-      return data; // Return the data so we can use it immediately
+      return data;
     } else {
       throw new Error(result.message || 'Failed to fetch zero stock data');
     }
@@ -852,7 +833,8 @@ const StockReportScreen: React.FC = () => {
     setTotalRecords(0);
     setIsScrollingToResults(false);
     setIsZeroStock(false);
-    setHasSearched(false); // Reset search state
+    setHasSearched(false);
+
     setPagination({
       currentPage: 1,
       itemsPerPage: 50,
@@ -869,12 +851,10 @@ const StockReportScreen: React.FC = () => {
     }
 
     try {
-      // Set loading state immediately to show overlay
       setIsPdfDownloading(true);
       setPdfProgress(5);
       setPdfStatusMessage('Preparing download...');
 
-      // Request storage permission for Android
       if (Platform.OS === 'android') {
         setPdfProgress(10);
         setPdfStatusMessage('Checking permissions...');
@@ -893,12 +873,10 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(20);
       setPdfStatusMessage('Preparing PDF request...');
 
-      // Get the appropriate API endpoint based on toggle state
       const pdfApiEndpoint = isZeroStock
         ? API_ENDPOINTS.GET_ZERO_STOCK_PDF_REPORT
         : API_ENDPOINTS.GET_STOCK_PDF_REPORT;
 
-      // Prepare the request payload - same as used for search
       const payload = {
         customerName: customerName || null,
         lotNo: lotNo ? Number(lotNo) : null,
@@ -917,36 +895,28 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(30);
       setPdfStatusMessage('Requesting PDF from server...');
 
-      // Create filename with date for uniqueness
       const currentDate = new Date();
       const dateString = format(currentDate, 'yyyyMMdd_HHmmss');
       const reportType = isZeroStock ? 'ZeroStock' : 'Stock';
       const fileName = `${reportType}_Report_${dateString}.pdf`;
 
-      // Determine directory path based on platform
       let dirPath: string;
       let filePath: string;
 
       if (Platform.OS === 'ios') {
-        // For iOS, use the Documents directory
         dirPath = RNBlobUtil.fs.dirs.DocumentDir;
         filePath = `${dirPath}/${fileName}`;
       } else {
-        // For Android, use the public Download directory
         dirPath = RNBlobUtil.fs.dirs.DownloadDir;
 
-        // For Android 10+ (API level 29+), we need to use the app's specific directory
         if ((Platform.Version as number) >= 29) {
           console.log('Using app download directory for Android 10+:', dirPath);
 
-          // For Android 10+, try to use the public Downloads directory
           if (dirPath.includes('Android/data')) {
-            // If we got the app's private directory, try to get public directory
             const directPath = '/storage/emulated/0/Download';
             try {
               const directPathExists = await RNBlobUtil.fs.exists(directPath);
               if (directPathExists) {
-                // Test if writable
                 const testFile = `${directPath}/test-write-access.txt`;
                 try {
                   await RNBlobUtil.fs.writeFile(testFile, 'test', 'utf8');
@@ -965,13 +935,11 @@ const StockReportScreen: React.FC = () => {
             }
           }
         } else {
-          // For older Android versions, try to use the main storage Download directory
           try {
             const directPath = '/storage/emulated/0/Download';
             const exists = await RNBlobUtil.fs.exists(directPath);
 
             if (exists) {
-              // Test if writable by creating a test file
               const testFile = `${directPath}/test-write-access.txt`;
               try {
                 await RNBlobUtil.fs.writeFile(testFile, 'test', 'utf8');
@@ -997,7 +965,6 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(45);
       setPdfStatusMessage('Downloading PDF...');
 
-      // Use a direct Axios approach for all platforms
       const response = await axios({
         url: `${pdfApiEndpoint}?customerId=${customerId}`,
         method: 'POST',
@@ -1012,8 +979,6 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(60);
       setPdfStatusMessage('Processing PDF data...');
 
-      // Check if we got a valid PDF response by looking at the first few bytes
-      // PDF files start with "%PDF-"
       const data = new Uint8Array(response.data);
       const isPdf =
         data.length > 4 &&
@@ -1023,7 +988,6 @@ const StockReportScreen: React.FC = () => {
         data[3] === 0x46; // F
 
       if (!isPdf) {
-        // Try to parse the response as text if it's not a PDF
         const textData = Buffer.from(response.data).toString('utf8');
         console.error('Received non-PDF response:', textData);
         throw new Error(
@@ -1034,16 +998,13 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(70);
       setPdfStatusMessage('Saving PDF file...');
 
-      // Convert response to base64 string
       const pdfData = Buffer.from(response.data).toString('base64');
 
-      // Create directory if needed
       const dirExists = await RNBlobUtil.fs.exists(dirPath);
       if (!dirExists) {
         await RNBlobUtil.fs.mkdir(dirPath);
       }
 
-      // Check if file already exists and get unique name if needed
       let finalFilePath = filePath;
       const fileExists = await RNBlobUtil.fs.exists(filePath);
       if (fileExists) {
@@ -1056,10 +1017,8 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(80);
       setPdfStatusMessage('Writing file to storage...');
 
-      // Write the file using RNBlobUtil
       await RNBlobUtil.fs.writeFile(finalFilePath, pdfData, 'base64');
 
-      // Verify the file exists
       const savedFileExists = await RNBlobUtil.fs.exists(finalFilePath);
       if (!savedFileExists) {
         throw new Error(`File could not be saved to ${finalFilePath}`);
@@ -1068,20 +1027,12 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(90);
       setPdfStatusMessage('Finalizing download...');
 
-      // For Android, ensure the file is visible in the media store
       if (Platform.OS === 'android') {
         try {
-          // Make the file visible in the media store
           await RNBlobUtil.fs.scanFile([
             { path: finalFilePath, mime: 'application/pdf' },
           ]);
           console.log('File scanned successfully');
-
-          // Show notification like in ReportPdfUtils
-          console.log(
-            'Showing notification for downloaded PDF:',
-            finalFilePath,
-          );
 
           const channelId = 'pdf-downloads-stock';
 
@@ -1113,7 +1064,6 @@ const StockReportScreen: React.FC = () => {
           try {
           } catch (notifError) {
             console.error('Error showing notification:', notifError);
-            // Fallback to Toast
             ToastAndroid.showWithGravity(
               'PDF downloaded to Downloads folder',
               ToastAndroid.LONG,
@@ -1122,7 +1072,6 @@ const StockReportScreen: React.FC = () => {
           }
         } catch (scanError) {
           console.error('Error making file visible:', scanError);
-          // Continue even if scanning fails
           ToastAndroid.showWithGravity(
             'PDF saved but may not be visible in Downloads',
             ToastAndroid.LONG,
@@ -1134,11 +1083,9 @@ const StockReportScreen: React.FC = () => {
       setPdfProgress(100);
       setPdfStatusMessage('Download complete!');
 
-      // Short delay to show 100% completion before hiding the overlay
       setTimeout(() => {
         setIsPdfDownloading(false);
 
-        // Show success message and offer to open the file
         const isPublicStorage = !finalFilePath.includes('Android/data');
         Alert.alert(
           'PDF Downloaded',
@@ -1150,19 +1097,16 @@ const StockReportScreen: React.FC = () => {
               text: 'View PDF',
               onPress: () => {
                 try {
-                  // Make sure the path format is correct for the platform
                   const formattedPath =
                     Platform.OS === 'android' &&
                     !finalFilePath.startsWith('file://')
                       ? `file://${finalFilePath}`
                       : finalFilePath;
 
-                  // Open the PDF with a slight delay to ensure it's fully written
                   setTimeout(() => {
                     if (Platform.OS === 'ios') {
                       RNBlobUtil.ios.openDocument(finalFilePath);
                     } else {
-                      // For Android
                       RNBlobUtil.android.actionViewIntent(
                         finalFilePath,
                         'application/pdf',
@@ -1185,7 +1129,6 @@ const StockReportScreen: React.FC = () => {
     } catch (error) {
       console.error('Error downloading PDF:', error);
 
-      // Show more specific error message
       let errorMessage = 'Failed to download the PDF report.';
       if (error instanceof Error) {
         errorMessage += ` Error: ${error.message}`;
@@ -1213,6 +1156,12 @@ const StockReportScreen: React.FC = () => {
         setFromDate(selectedDate);
         setIsFromDateSelected(true);
         console.log('From date updated (Android)');
+        // Trigger subcategory fetch if toDate is already selected
+        if (toDate) {
+          const from = formatApiDate(selectedDate)!;
+          const to = formatApiDate(toDate)!;
+          fetchSubCategories(from, to, isZeroStock);
+        }
       }
     }
   };
@@ -1231,6 +1180,12 @@ const StockReportScreen: React.FC = () => {
         setToDate(selectedDate);
         setIsToDateSelected(true);
         console.log('To date updated (Android)');
+        // Trigger subcategory fetch if fromDate is already selected
+        if (fromDate) {
+          const from = formatApiDate(fromDate)!;
+          const to = formatApiDate(selectedDate)!;
+          fetchSubCategories(from, to, isZeroStock);
+        }
       }
     }
   };
@@ -1242,6 +1197,12 @@ const StockReportScreen: React.FC = () => {
     setIsFromDateSelected(true);
     setShowFromDatePicker(false);
     console.log('From date updated (iOS)');
+    // Trigger subcategory fetch if toDate is already selected
+    if (toDate) {
+      const from = formatApiDate(tempFromDate)!;
+      const to = formatApiDate(toDate)!;
+      fetchSubCategories(from, to, isZeroStock);
+    }
   };
 
   const confirmToDate = () => {
@@ -1250,6 +1211,12 @@ const StockReportScreen: React.FC = () => {
     setIsToDateSelected(true);
     setShowToDatePicker(false);
     console.log('To date updated (iOS)');
+    // Trigger subcategory fetch if fromDate is already selected
+    if (fromDate) {
+      const from = formatApiDate(fromDate)!;
+      const to = formatApiDate(tempToDate)!;
+      fetchSubCategories(from, to, isZeroStock);
+    }
   };
 
   // Render table header
@@ -1386,27 +1353,6 @@ const StockReportScreen: React.FC = () => {
                 placeholder=""
               />
             </View>
-
-            <View style={styles.formColumn}>
-              <Text style={styles.label}>Item Sub Category</Text>
-              {subCategoryLoading ? (
-                <View style={[styles.input, styles.dropdownLoading]}>
-                  <ActivityIndicator size="small" color="#E87830" />
-                  <Text style={styles.dropdownLoadingText}>Loading...</Text>
-                </View>
-              ) : (
-                <MultiSelect
-                  options={itemSubCategoryOptions}
-                  selectedValues={itemSubCategory}
-                  onSelectChange={logAndSetItemSubCategory}
-                  placeholder="--SELECT--"
-                  primaryColor="#E87830"
-                />
-              )}
-            </View>
-          </View>
-
-          <View style={styles.formRow}>
             <View style={styles.formColumn}>
               <Text style={styles.label}>Item Marks</Text>
               <TextInput
@@ -1414,17 +1360,6 @@ const StockReportScreen: React.FC = () => {
                 value={itemMarks}
                 onChangeText={logAndSetItemMarks}
                 placeholder=""
-              />
-            </View>
-
-            <View style={styles.formColumn}>
-              <Text style={styles.label}>Unit</Text>
-              <MultiSelect
-                options={unitOptions}
-                selectedValues={unit}
-                onSelectChange={logAndSetUnit}
-                placeholder="--SELECT--"
-                primaryColor="#E87830"
               />
             </View>
           </View>
@@ -1475,7 +1410,51 @@ const StockReportScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Zero Stock Checkbox */}
+          {/*
+            FIX 1: Item Sub Category field is now ONLY rendered when both
+            From Date and To Date are selected. This eliminates the confusion
+            of showing a disabled/non-functional field before dates are picked.
+            A helper text guides the user when dates are not yet chosen.
+          */}
+          <View style={styles.formRow}>
+            <View style={styles.formColumn}>
+              <Text style={styles.label}>Item Sub Category</Text>
+              {!datesSelected ? (
+                // Show a non-interactive placeholder explaining the dependency
+                <View style={[styles.input, styles.disabledFieldContainer]}>
+                  <Text style={styles.disabledFieldText}>
+                    Select From & To Date first
+                  </Text>
+                </View>
+              ) : subCategoryLoading ? (
+                <View style={[styles.input, styles.dropdownLoading]}>
+                  <ActivityIndicator size="small" color="#E87830" />
+                  <Text style={styles.dropdownLoadingText}>Loading...</Text>
+                </View>
+              ) : (
+                <MultiSelect
+                  options={itemSubCategoryOptions}
+                  selectedValues={itemSubCategory}
+                  onSelectChange={logAndSetItemSubCategory}
+                  placeholder="--SELECT--"
+                  primaryColor="#E87830"
+                />
+              )}
+            </View>
+
+            <View style={styles.formColumn}>
+              <Text style={styles.label}>Unit</Text>
+              <MultiSelect
+                options={unitOptions}
+                selectedValues={unit}
+                onSelectChange={logAndSetUnit}
+                placeholder="--SELECT--"
+                primaryColor="#E87830"
+              />
+            </View>
+          </View>
+
+          {/* Zero Stock Toggle */}
           <View style={styles.checkboxRow}>
             <Text style={styles.checkboxLabel}>Zero Stock</Text>
             <Switch
@@ -1510,7 +1489,7 @@ const StockReportScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Scrolling indicator - only shown when data is loading and we need to scroll */}
+          {/* Scrolling indicator */}
           {isLoading && stockData.length === 0 && isScrollingToResults && (
             <View style={styles.scrollIndicatorContainer}>
               <Text style={styles.scrollIndicatorText}>Loading results...</Text>
@@ -1518,19 +1497,7 @@ const StockReportScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Empty state message - only shown when not loading, no data, and search was attempted */}
-          {/* {!isLoading &&
-            stockData.length === 0 &&
-            !errorMessage &&
-            hasSearched && (
-              <View style={styles.noDataContainer}>
-                <Text style={styles.noDataText}>
-                  No stock data available. Try adjusting your search criteria.
-                </Text>
-              </View>
-            )} */}
-
-          {/* Empty state message - only shown when not loading, no data, and search was attempted */}
+          {/* Empty state message */}
           {!isLoading &&
             stockData.length === 0 &&
             !errorMessage &&
@@ -1623,68 +1590,95 @@ const StockReportScreen: React.FC = () => {
         </ScrollView>
       </TouchableWithoutFeedback>
 
-      {/* Date Pickers with fixed styling */}
-      {showFromDatePicker && (
+      {/*
+        Date Pickers
+        ─────────────────────────────────────────────────────────────────────
+        Android: DateTimePicker with display="default" renders as a fully
+        native system dialog. Wrapping it in a <Modal> causes a white blank
+        strip to appear over the calendar (the app Modal background bleeds
+        behind the native dialog). On Android we render the picker directly
+        with NO wrapper — the OS handles the dialog chrome entirely.
+
+        iOS: The picker uses display="spinner" which is an inline component,
+        so we still wrap it in our own Modal with Cancel/Confirm buttons.
+        ─────────────────────────────────────────────────────────────────────
+      */}
+
+      {/* FROM DATE — Android: bare picker, iOS: custom Modal */}
+      {showFromDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={tempFromDate}
+          mode="date"
+          display="default"
+          onChange={onFromDateChange}
+        />
+      )}
+      {showFromDatePicker && Platform.OS === 'ios' && (
         <Modal transparent={true} animationType="slide">
           <View style={styles.datePickerContainer}>
             <View style={styles.datePickerModal}>
               <DateTimePicker
                 value={tempFromDate}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display="spinner"
                 onChange={onFromDateChange}
                 textColor="#000000"
                 style={styles.datePicker}
               />
-              {Platform.OS === 'ios' && (
-                <View style={styles.datePickerButtons}>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => setShowFromDatePicker(false)}
-                  >
-                    <Text style={styles.buttonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={confirmFromDate}
-                  >
-                    <Text style={styles.buttonText}>Confirm</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <View style={styles.datePickerButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowFromDatePicker(false)}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={confirmFromDate}
+                >
+                  <Text style={styles.buttonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
       )}
 
-      {showToDatePicker && (
+      {/* TO DATE — Android: bare picker, iOS: custom Modal */}
+      {showToDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={tempToDate}
+          mode="date"
+          display="default"
+          onChange={onToDateChange}
+        />
+      )}
+      {showToDatePicker && Platform.OS === 'ios' && (
         <Modal transparent={true} animationType="slide">
           <View style={styles.datePickerContainer}>
             <View style={styles.datePickerModal}>
               <DateTimePicker
                 value={tempToDate}
                 mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display="spinner"
                 onChange={onToDateChange}
                 textColor="#000000"
                 style={styles.datePicker}
               />
-              {Platform.OS === 'ios' && (
-                <View style={styles.datePickerButtons}>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => setShowToDatePicker(false)}
-                  >
-                    <Text style={styles.buttonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={confirmToDate}
-                  >
-                    <Text style={styles.buttonText}>Confirm</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              <View style={styles.datePickerButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowToDatePicker(false)}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={confirmToDate}
+                >
+                  <Text style={styles.buttonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -1751,6 +1745,18 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
+  },
+
+  // FIX 1: Disabled field style — visually distinct, not interactive
+  disabledFieldContainer: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+  },
+  disabledFieldText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontStyle: 'italic',
   },
 
   // Checkbox styles
@@ -1984,7 +1990,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     overflow: 'hidden',
     position: 'relative',
-    paddingTop: 50, // Add padding to make room for the PDF button
+    paddingTop: 50,
   },
   tableScrollView: {
     width: '100%',

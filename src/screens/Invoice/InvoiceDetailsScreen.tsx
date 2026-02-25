@@ -648,7 +648,13 @@ const InvoiceDetailsScreen: React.FC = () => {
           <View key={sectionIndex} style={styles.sectionPlanContainer}>
             <Text style={styles.sectionPlanTitle}>{section.sectionHeader}</Text>
             <View style={styles.tableContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={true}
+                showsVerticalScrollIndicator={true}
+                style={{ maxHeight: 360 }}
+                contentContainerStyle={{ flexGrow: 1 }}
+              >
                 <View style={styles.table}>
                   <View style={styles.tableHeader}>
                     <View style={[styles.tableCell, { width: 100 }]}>
@@ -680,7 +686,13 @@ const InvoiceDetailsScreen: React.FC = () => {
                     </View>
                   </View>
 
-                  <ScrollView style={styles.tableBody}>
+                  <ScrollView
+                    style={styles.tableBody}
+                    nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                    scrollEnabled={section.items.length > 0}
+                    keyboardShouldPersistTaps="handled"
+                  >
                     {section.items.map((item, index) => (
                       <View key={index} style={styles.tableRow}>
                         <View style={[styles.tableCell, { width: 100 }]}>
@@ -1383,7 +1395,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   tableBody: {
-    maxHeight: 400,
+    maxHeight: 360,
   },
   tableRow: {
     flexDirection: 'row',

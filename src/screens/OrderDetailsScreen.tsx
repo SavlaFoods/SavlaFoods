@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useCallback} from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -11,8 +11,8 @@ import {
   TextInput,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import {RouteProp} from '@react-navigation/native';
-import {API_ENDPOINTS, DEFAULT_HEADERS} from '../config/api.config';
+import { RouteProp } from '@react-navigation/native';
+import { API_ENDPOINTS, DEFAULT_HEADERS } from '../config/api.config';
 import axios from 'axios';
 import {
   useNavigation,
@@ -20,8 +20,8 @@ import {
   NavigationProp,
   CommonActions,
 } from '@react-navigation/native';
-import {LayoutWrapper} from '../components/AppLayout';
-import {useCustomer} from '../contexts/DisplayNameContext';
+import { LayoutWrapper } from '../components/AppLayout';
+import { useCustomer } from '../contexts/DisplayNameContext';
 
 interface OrderItem {
   QUANTITY: number;
@@ -65,11 +65,11 @@ interface RouteParams {
 const OrderDetailsScreen = ({
   route,
 }: {
-  route: RouteProp<{params: RouteParams}, 'params'>;
+  route: RouteProp<{ params: RouteParams }, 'params'>;
 }) => {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
-  const {order: initialOrder, unitName, fromEditScreen} = route.params;
-  const {customerID} = useCustomer();
+  const { order: initialOrder, unitName, fromEditScreen } = route.params;
+  const { customerID } = useCustomer();
 
   const [order, setOrder] = useState<Order>(initialOrder);
   const [orderItems, setOrderItems] = useState<OrderItem[]>(
@@ -107,7 +107,7 @@ const OrderDetailsScreen = ({
       const currentDate = getCurrentDate();
       const response = await axios.get(
         `${API_ENDPOINTS.GET_PENDING_ORDERS_WITH_STATUS}?customer_id=${customerID}&fromDate=${currentDate}&toDate=${currentDate}`,
-        {headers: DEFAULT_HEADERS, timeout: 5000},
+        { headers: DEFAULT_HEADERS, timeout: 5000 },
       );
 
       if (response.data.success && response.data.data.orders) {
@@ -125,7 +125,7 @@ const OrderDetailsScreen = ({
             navigation.dispatch(
               CommonActions.reset({
                 index: 0,
-                routes: [{name: 'PendingOrdersScreen'}],
+                routes: [{ name: 'PendingOrdersScreen' }],
               }),
             );
           }, 1500);
@@ -163,7 +163,7 @@ const OrderDetailsScreen = ({
     try {
       const response = await axios.get(
         `${API_ENDPOINTS.GET_PENDING_ORDERS}?orderId=${order.orderId}&customerId=${customerID}`,
-        {headers: DEFAULT_HEADERS, timeout: 5000},
+        { headers: DEFAULT_HEADERS, timeout: 5000 },
       );
 
       if (response.data.success && response.data.data.order) {
@@ -177,7 +177,7 @@ const OrderDetailsScreen = ({
             navigation.dispatch(
               CommonActions.reset({
                 index: 0,
-                routes: [{name: 'PendingOrdersScreen'}],
+                routes: [{ name: 'PendingOrdersScreen' }],
               }),
             );
           }, 1500);
@@ -250,7 +250,7 @@ const OrderDetailsScreen = ({
     setDeletingItemId(itemToDelete.detailId);
     setIsLoading(true);
 
-    const requestBody = {detailIds: [itemToDelete.detailId]};
+    const requestBody = { detailIds: [itemToDelete.detailId] };
     const apiUrl = `${API_ENDPOINTS.DELETE_ORDER}?customerId=${customerID}`;
 
     try {
@@ -264,7 +264,7 @@ const OrderDetailsScreen = ({
           item => item.detailId !== itemToDelete.detailId,
         );
         setOrderItems(updatedItems);
-        setOrder({...order, items: updatedItems});
+        setOrder({ ...order, items: updatedItems });
         showToast(`Item deleted successfully`, 'success');
 
         if (
@@ -402,21 +402,21 @@ const OrderDetailsScreen = ({
           cancelledBy: 'MOBILE_USER',
         },
         {
-          headers: {...DEFAULT_HEADERS, 'Content-Type': 'application/json'},
+          headers: { ...DEFAULT_HEADERS, 'Content-Type': 'application/json' },
           timeout: 10000,
         },
       );
 
       if (response.data.success) {
         setOrderItems([]);
-        setOrder({...order, items: [], status: 'CANCELLED'});
+        setOrder({ ...order, items: [], status: 'CANCELLED' });
         showToast('Order cancelled successfully!', 'success');
         setTimeout(() => {
           setModalVisible(false);
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
-              routes: [{name: 'PendingOrdersScreen'}],
+              routes: [{ name: 'PendingOrdersScreen' }],
             }),
           );
         }, 1500);
@@ -470,8 +470,9 @@ const OrderDetailsScreen = ({
                   <TouchableOpacity
                     style={styles.editButton}
                     onPress={() =>
-                      navigation.navigate('EditOrderScreen', {order})
-                    }>
+                      navigation.navigate('EditOrderScreen', { order })
+                    }
+                  >
                     <MaterialIcons name="edit" size={24} color="white" />
                   </TouchableOpacity>
                 )}
@@ -524,11 +525,12 @@ const OrderDetailsScreen = ({
                       color="#0284C7"
                     />
                   </View>
-                  <View style={{flex: 1}}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.infoLabelNew}>Order By</Text>
                     <Text
                       style={[styles.infoValueNew, styles.transporterText]}
-                      numberOfLines={3}>
+                      numberOfLines={3}
+                    >
                       {order.orderBy || 'Qqq'}
                     </Text>
                   </View>
@@ -544,11 +546,12 @@ const OrderDetailsScreen = ({
                       color="#0284C7"
                     />
                   </View>
-                  <View style={{flex: 1}}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.infoLabelNew}>Transporter Name</Text>
                     <Text
                       style={[styles.infoValueNew, styles.transporterText]}
-                      numberOfLines={3}>
+                      numberOfLines={3}
+                    >
                       {order.transporterName || 'Qqq'}
                     </Text>
                   </View>
@@ -605,7 +608,8 @@ const OrderDetailsScreen = ({
             orderItems.map((item: OrderItem, index: number) => (
               <View
                 key={`item-${item.detailId || index}`}
-                style={styles.itemCard}>
+                style={styles.itemCard}
+              >
                 <View style={styles.itemHeader}>
                   <View style={styles.itemNameContainer}>
                     <MaterialIcons name="inventory" size={18} color="#0369a1" />
@@ -618,7 +622,8 @@ const OrderDetailsScreen = ({
                       onPress={() => {
                         setItemToDelete(item);
                         setDeleteModalVisible(true);
-                      }}>
+                      }}
+                    >
                       {deletingItemId === item.detailId ? (
                         <View style={styles.loadingContainer}>
                           <Text style={styles.loadingText}>Deleting...</Text>
@@ -668,7 +673,8 @@ const OrderDetailsScreen = ({
                         styles.quantityValueNew,
                         item.AVAILABLE_QTY < 0 && styles.negativeQuantity,
                         item.AVAILABLE_QTY > 0 && styles.positiveQuantity,
-                      ]}>
+                      ]}
+                    >
                       {item.AVAILABLE_QTY}
                     </Text>
                   </View>
@@ -690,7 +696,8 @@ const OrderDetailsScreen = ({
               </Text>
               <TouchableOpacity
                 style={styles.backToOrdersButton}
-                onPress={() => navigation.goBack()}>
+                onPress={() => navigation.goBack()}
+              >
                 <MaterialIcons name="arrow-back" size={16} color="#fff" />
                 <Text style={styles.backToOrdersText}>Back to Orders</Text>
               </TouchableOpacity>
@@ -702,7 +709,8 @@ const OrderDetailsScreen = ({
           animationType="fade"
           transparent={true}
           visible={modalVisible}
-          onRequestClose={() => setModalVisible(false)}>
+          onRequestClose={() => setModalVisible(false)}
+        >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -741,13 +749,22 @@ const OrderDetailsScreen = ({
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.modalCancelButton}
-                  onPress={() => setModalVisible(false)}>
+                  onPress={() => setModalVisible(false)}
+                >
                   <Text style={styles.modalCancelText}>Keep Order</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.modalConfirmButton}
+                  style={[
+                    styles.modalConfirmButton,
+                    {
+                      backgroundColor: cancelRemark.trim()
+                        ? '#ef4444'
+                        : '#fca5a5',
+                    }, // red if filled, light red if empty
+                  ]}
                   onPress={handleCancelOrder}
-                  disabled={isLoading}>
+                  disabled={!cancelRemark.trim() || isLoading} // disable if empty or loading
+                >
                   <MaterialIcons name="delete" size={16} color="#fff" />
                   <Text style={styles.modalConfirmText}>
                     {isLoading ? 'Cancelling...' : 'Confirm Cancel'}
@@ -762,7 +779,8 @@ const OrderDetailsScreen = ({
           animationType="fade"
           transparent={true}
           visible={deleteModalVisible}
-          onRequestClose={() => setDeleteModalVisible(false)}>
+          onRequestClose={() => setDeleteModalVisible(false)}
+        >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -784,7 +802,8 @@ const OrderDetailsScreen = ({
               <View style={styles.deleteModalActions}>
                 <TouchableOpacity
                   style={styles.keepItemButton}
-                  onPress={() => setDeleteModalVisible(false)}>
+                  onPress={() => setDeleteModalVisible(false)}
+                >
                   <Text style={styles.keepItemText}>Keep Item</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -795,7 +814,8 @@ const OrderDetailsScreen = ({
                       handleDeleteItem(itemToDelete);
                     }
                   }}
-                  disabled={isLoading}>
+                  disabled={isLoading}
+                >
                   <MaterialIcons name="delete-outline" size={20} color="#fff" />
                   <Text style={styles.confirmDeleteText}>
                     {isLoading ? 'DELETING...' : 'YES, DELETE'}
@@ -812,10 +832,11 @@ const OrderDetailsScreen = ({
               styles.toast,
               {
                 opacity: toastOpacity,
-                transform: [{translateX: toastOffset}],
+                transform: [{ translateX: toastOffset }],
               },
               toastType === 'error' ? styles.errorToast : styles.successToast,
-            ]}>
+            ]}
+          >
             <View style={styles.toastContent}>
               <MaterialIcons
                 name={toastType === 'success' ? 'check-circle' : 'error'}
@@ -832,7 +853,8 @@ const OrderDetailsScreen = ({
             <TouchableOpacity
               style={styles.fullCancelButton}
               onPress={() => showCancelConfirmation(order)}
-              disabled={isLoading}>
+              disabled={isLoading}
+            >
               <MaterialIcons name="cancel" size={20} color="#fff" />
               <Text style={styles.fullCancelButtonText}>
                 {isLoading ? 'Processing...' : 'Cancel Order'}
@@ -915,7 +937,7 @@ const styles = StyleSheet.create({
     padding: 14,
     elevation: 3,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     borderWidth: 1,
@@ -991,7 +1013,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     elevation: 3,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
   },
@@ -1009,7 +1031,7 @@ const styles = StyleSheet.create({
     marginLeft: 11,
     letterSpacing: 0.5,
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: {width: 0, height: 1},
+    textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   headerContent: {
@@ -1061,7 +1083,7 @@ const styles = StyleSheet.create({
     padding: 24,
     elevation: 3,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
   },
@@ -1083,7 +1105,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
@@ -1108,7 +1130,7 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
@@ -1189,7 +1211,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     shadowColor: '#000',
-    shadowOffset: {width: -2, height: 2},
+    shadowOffset: { width: -2, height: 2 },
     shadowOpacity: 0.18,
     shadowRadius: 4.65,
     elevation: 7,

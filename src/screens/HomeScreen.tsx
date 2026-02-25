@@ -213,9 +213,30 @@ const HomeScreen: React.FC = () => {
         setCategories(sortedCategories);
         setFilteredCategories(sortedCategories);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching categories:', error);
-      Alert.alert('Error', 'Failed to fetch categories');
+
+      // If token expired / unauthorized
+      if (error?.response?.status === 401) {
+        Alert.alert(
+          'Session Expired',
+          'Your login session has expired. Please login again to continue.',
+          [
+            {
+              text: 'Login',
+              onPress: () => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'LoginScreen' }],
+                });
+              },
+            },
+          ],
+          { cancelable: false },
+        );
+      } else {
+        Alert.alert('Error', 'Failed to fetch categories');
+      }
     }
   }, []);
 
@@ -567,7 +588,6 @@ const HomeScreen: React.FC = () => {
     }
   }, [isConnected, wasDisconnected]);
 
-  // ✅ Only wrap search input, not the whole screen
   return (
     <>
       <LayoutWrapper showTabBar={false} route={route}>

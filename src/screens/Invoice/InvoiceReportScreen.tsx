@@ -17,9 +17,13 @@ interface InvoiceRow {
   srNo: string;
   billNo: string;
   invoiceDate: string;
+  unitName: string;
   totalInvoiceItemAmount: string;
   totalTaxAmount: string;
   totalInvoiceAmount: string;
+  totalRoundoffAmount: string;
+  invoiceOutstandingAmount: string;
+  paymentStatus: string;
 }
 
 interface SummaryData {
@@ -66,60 +70,49 @@ const InvoiceReportScreen: React.FC<InvoiceReportScreenProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
 
+  const mapToInvoiceRow = (row: string[]): InvoiceRow => ({
+    srNo: String(row[0] ?? ''),
+    billNo: row[1] ?? '',
+    invoiceDate: row[2] ?? '',
+    unitName: row[3] ?? '',
+    totalInvoiceItemAmount: row[4] ?? '0', // ← index 4 now (after Unit Name)
+    totalTaxAmount: row[5] ?? '0',
+    totalInvoiceAmount: row[6] ?? '0',
+    totalRoundoffAmount: row[7] ?? '0',
+    invoiceOutstandingAmount: row[8] ?? '0',
+    paymentStatus: row[9] ?? 'Pending', // ← important: index 9
+  });
+
+  // in useEffect
   useEffect(() => {
-    if (reportData && reportData.reportData) {
-      // Map ONLY the 6 columns we want to display (indices 0-5)
-      const formattedData: InvoiceRow[] = reportData.reportData.map(row => ({
-        srNo: row[0] || '',
-        billNo: row[1] || '',
-        invoiceDate: row[2] || '',
-        totalInvoiceItemAmount: row[3] || '0',
-        totalTaxAmount: row[4] || '0',
-        totalInvoiceAmount: row[5] || '0',
-        totalRoundoffAmount: row[6] || '0',
-        paymentStatus: row[8] || 'Paid',
-        //Ignoring row[6] (TotalRoundOff Amount)
-        // Ignoring row[7] (Invoice Outstanding Amount)
-        // Ignoring row[8] (Payment Status)
-      }));
-      setFilteredData(formattedData);
+    if (reportData?.reportData) {
+      setFilteredData(reportData.reportData.map(mapToInvoiceRow));
     }
   }, [reportData]);
 
+  useEffect(() => {
+    console.log('First row raw:', reportData?.reportData?.[0]);
+    console.log(
+      'First row mapped:',
+      mapToInvoiceRow(reportData?.reportData?.[0] || []),
+    );
+  }, [reportData]);
+
+  // in handleSearch (replace the whole function or just the mapping part)
   const handleSearch = (text: string) => {
     setSearchText(text);
     setCurrentPage(1);
 
-    if (!text.trim() || !reportData || !reportData.reportData) {
-      const formattedData: InvoiceRow[] =
-        reportData?.reportData?.map(row => ({
-          srNo: row[0] || '',
-          billNo: row[1] || '',
-          invoiceDate: row[2] || '',
-          totalInvoiceItemAmount: row[3] || '0',
-          totalTaxAmount: row[4] || '0',
-          totalInvoiceAmount: row[5] || '0',
-          paymentStatus: row[8] || 'Paid',
-        })) || [];
-      setFilteredData(formattedData);
+    if (!text.trim()) {
+      setFilteredData(reportData?.reportData?.map(mapToInvoiceRow) ?? []);
       return;
     }
 
-    const filtered: InvoiceRow[] = reportData.reportData
-      .map(row => ({
-        srNo: row[0] || '',
-        billNo: row[1] || '',
-        invoiceDate: row[2] || '',
-        totalInvoiceItemAmount: row[3] || '0',
-        totalTaxAmount: row[4] || '0',
-        totalInvoiceAmount: row[5] || '0',
-        paymentStatus: row[8] || 'Paid',
-      }))
+    const filtered = (reportData?.reportData ?? [])
+      .map(mapToInvoiceRow)
       .filter(row =>
-        Object.values(row).some(
-          value =>
-            value &&
-            value.toString().toLowerCase().includes(text.toLowerCase()),
+        Object.values(row).some(v =>
+          String(v).toLowerCase().includes(text.toLowerCase()),
         ),
       );
 
@@ -274,6 +267,7 @@ const InvoiceReportScreen: React.FC<InvoiceReportScreenProps> = ({
               <Text style={[styles.headerCell, { width: 130 }]}>
                 Invoice Date
               </Text>
+              <Text style={[styles.headerCell, { width: 100 }]}>Unit</Text>
               <Text style={[styles.headerCell, { width: 160 }]}>
                 Invoice Item Amount
               </Text>
@@ -282,6 +276,15 @@ const InvoiceReportScreen: React.FC<InvoiceReportScreenProps> = ({
               </Text>
               <Text style={[styles.headerCell, { width: 170 }]}>
                 Invoice Amount
+              </Text>
+              <Text style={[styles.headerCell, { width: 140 }]}>
+                Round Off Amount
+              </Text>
+              <Text style={[styles.headerCell, { width: 180 }]}>
+                Invoice Outstanding
+              </Text>
+              <Text style={[styles.headerCell, { width: 130 }]}>
+                Payment Status
               </Text>
             </View>
 
@@ -293,6 +296,9 @@ const InvoiceReportScreen: React.FC<InvoiceReportScreenProps> = ({
                 <Text style={[styles.cell, { width: 130 }]}>
                   {row.invoiceDate}
                 </Text>
+                <Text style={[styles.cell, { width: 100 }]}>
+                  {row.unitName}
+                </Text>
                 <Text style={[styles.cell, { width: 160 }]}>
                   ₹{formatCurrency(row.totalInvoiceItemAmount)}
                 </Text>
@@ -301,6 +307,25 @@ const InvoiceReportScreen: React.FC<InvoiceReportScreenProps> = ({
                 </Text>
                 <Text style={[styles.cell, { width: 170 }]}>
                   ₹{formatCurrency(row.totalInvoiceAmount)}
+                </Text>
+                <Text style={[styles.cell, { width: 140 }]}>
+                  ₹{formatCurrency(row.totalRoundoffAmount)}
+                </Text>
+                <Text style={[styles.cell, { width: 180 }]}>
+                  ₹{formatCurrency(row.invoiceOutstandingAmount)}
+                </Text>
+                <Text
+                  style={[
+                    styles.cell,
+                    { width: 110 },
+                    row.paymentStatus?.toLowerCase() === 'paid'
+                      ? { color: 'green', fontWeight: 'bold' }
+                      : row.paymentStatus?.toLowerCase().includes('due')
+                      ? { color: 'red', fontWeight: 'bold' }
+                      : {},
+                  ]}
+                >
+                  {row.paymentStatus}
                 </Text>
               </View>
             ))}

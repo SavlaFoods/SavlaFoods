@@ -81,7 +81,15 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
 
   const [formData, setFormData] = useState({
     transporterName: order.transporterName || '',
-    deliveryDate: order.deliveryDate || new Date().toISOString().split('T')[0],
+    deliveryDate:
+      order.deliveryDate ||
+      (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+          2,
+          '0',
+        )}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
     remarks: order.remarks || '',
     deliveryAddress: sanitizeString(order.deliveryAddress),
   });
@@ -118,10 +126,12 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
     useState(false);
   const [exceededItem, setExceededItem] = useState<OrderItem | null>(null);
 
-  // Format current date for API call
   const getCurrentDate = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // Function to fetch pending orders with status
@@ -330,7 +340,12 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
     if (!date) return;
     date.setHours(0, 0, 0, 0);
     setSelectedDate(date);
-    const formattedDate = date.toISOString().split('T')[0];
+    // Build the date from LOCAL components — never toISOString(),
+    // which converts to UTC and shifts the date back a day in IST (+5:30).
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
     setFormData(prev => ({ ...prev, deliveryDate: formattedDate }));
     setValidationErrors(prev => ({ ...prev, deliveryDate: '' }));
   };

@@ -327,11 +327,11 @@ function App(): JSX.Element {
                           name="Main"
                           component={MainStackNavigator}
                         />
-                        {/* <RootStack.Screen
+                        <RootStack.Screen
                           name="HomeScreen"
                           component={MainStackNavigator}
-                          options={{headerShown: false}}
-                        /> */}
+                          options={{ headerShown: false }}
+                        />
                       </RootStack.Navigator>
                     </NavigationContainer>
                     <OfflineNotice />

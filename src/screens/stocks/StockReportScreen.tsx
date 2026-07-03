@@ -379,6 +379,7 @@ const StockReportScreen: React.FC = () => {
     to: string,
     zeroStock: boolean,
   ) => {
+    const requestId = ++subCategoryFetchId.current; // mark this call as "latest"
     try {
       setSubCategoryLoading(true);
       setSubCategories([]);
@@ -388,7 +389,6 @@ const StockReportScreen: React.FC = () => {
 
       if (!id || !name) {
         console.error('[SubCategory API] customerID or Disp_name missing');
-        setSubCategoryLoading(false);
         return;
       }
 
@@ -400,7 +400,7 @@ const StockReportScreen: React.FC = () => {
         customerID: Number(id),
         customerName: name,
         lotNo: null,
-        vakaNo: null,
+        vakalNo: null, // was "vakaNo" — typo, fix to match backend field
         itemSubCategory: null,
         itemMarks: null,
         unit: null,
@@ -409,23 +409,66 @@ const StockReportScreen: React.FC = () => {
         qtyLessThan: null,
       };
 
-      console.log('[SubCategory API] Fetching:', endpoint, payload);
+      console.log('========== SUBCATEGORY API START ==========');
+      console.log('From Date:', from);
+      console.log('To Date:', to);
+      console.log('Zero Stock:', zeroStock);
+      console.log('API Endpoint:', endpoint);
+      console.log('Request Time:', new Date().toISOString());
+
+      const startTime = Date.now();
 
       const response = await axios.post(endpoint, payload, {
-        headers: DEFAULT_HEADERS,
+        headers: await getAuthHeaders(),
+        timeout: 50000,
       });
 
-      if (response.data && Array.isArray(response.data.allSubCategories)) {
-        setSubCategories(response.data.allSubCategories);
+      console.log('Response Time:', Date.now() - startTime, 'ms');
+      console.log('Response Data:', response.data);
+      console.log('========== SUBCATEGORY API END ==========');
+
+      if (requestId !== subCategoryFetchId.current) return; // a newer call superseded this one
+
+      const list =
+        response.data?.allSubCategories ??
+        response.data?.data?.allSubCategories;
+      // inside fetchSubCategories, replace the list-handling block with:
+      if (Array.isArray(list)) {
+        console.log('[SubCategory API] Raw item sample:', list[0]); // <-- TEMP: confirm real field names
+        const mapped: SubCategoryItem[] = list.map((raw: any) => ({
+          ...raw,
+          name: raw.name ?? raw.SUBCATDESC ?? raw.CATDESC ?? '',
+          available: raw.available ?? true, // no availability field seen in payload — adjust if API sends one
+        }));
+        console.log(
+          '[SubCategory API] Mapped count:',
+          mapped.length,
+          'first:',
+          mapped[0],
+        );
+        setSubCategories(mapped);
       } else {
         setSubCategories([]);
         console.error('[SubCategory API] Unexpected response:', response.data);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.log('========== SUBCATEGORY API ERROR ==========');
+
+      if (error.code === 'ECONNABORTED') {
+        console.log('API TIMEOUT (>15 sec)');
+      }
+
+      console.log('Error Message:', error.message);
+      console.log('Error Code:', error.code);
+      console.log('Error Response:', error.response?.data);
+
       setSubCategories([]);
+
+      if (requestId === subCategoryFetchId.current) setSubCategories([]);
       console.error('[SubCategory API] Error:', error);
     } finally {
-      setSubCategoryLoading(false);
+      if (requestId === subCategoryFetchId.current)
+        setSubCategoryLoading(false);
     }
   };
 
@@ -458,22 +501,29 @@ const StockReportScreen: React.FC = () => {
     { label: displayName, value: displayName },
   ];
 
-  // FIX 1: Only build subcategory options when both dates are selected.
-  // When dates are missing, itemSubCategoryOptions is an empty array and
-  // the entire field is hidden (see JSX below), avoiding any confusion.
   const datesSelected = !!fromDate && !!toDate;
 
+  // replace the itemSubCategoryOptions derivation:
   const itemSubCategoryOptions = datesSelected
     ? subCategories
         .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
         .map(item => ({
-          label: item.name,
-          value: item.name,
+          label: item.name || '(unnamed)',
+          value: item.name || '',
           disabled: item.available === false,
         }))
     : [];
 
+  if (datesSelected) {
+    console.log(
+      '[SubCategoryOptions] built',
+      itemSubCategoryOptions.length,
+      'options from',
+      subCategories.length,
+      'raw rows',
+    );
+  }
   const unitOptions = [
     { label: 'D-39', value: 'D-39' },
     { label: 'D-514', value: 'D-514' },
@@ -621,27 +671,27 @@ const StockReportScreen: React.FC = () => {
     );
   };
 
-  // Updated useEffect to scroll to results when data loads
-  useEffect(() => {
-    if (stockData.length > 0 && !isLoading) {
-      setTimeout(() => {
-        if (resultsRef.current && scrollViewRef.current) {
-          resultsRef.current.measureLayout(
-            scrollViewRef.current.getScrollableNode(),
-            (x, y) => {
-              scrollViewRef.current?.scrollTo({
-                y: y + 20,
-                animated: true,
-              });
-            },
-            () => {
-              scrollViewRef.current?.scrollToEnd({ animated: true });
-            },
-          );
-        }
-      }, 300);
-    }
-  }, [stockData, isLoading]);
+  // // Updated useEffect to scroll to results when data loads
+  // useEffect(() => {
+  //   if (stockData.length > 0 && !isLoading) {
+  //     setTimeout(() => {
+  //       if (resultsRef.current && scrollViewRef.current) {
+  //         resultsRef.current.measureLayout(
+  //           scrollViewRef.current.getScrollableNode(),
+  //           (x, y) => {
+  //             scrollViewRef.current?.scrollTo({
+  //               y: y + 20,
+  //               animated: true,
+  //             });
+  //           },
+  //           () => {
+  //             scrollViewRef.current?.scrollToEnd({ animated: true });
+  //           },
+  //         );
+  //       }
+  //     }, 300);
+  //   }
+  // }, [stockData, isLoading]);
 
   // Updated handleSearch function
   const handleSearch = async () => {
@@ -735,7 +785,7 @@ const StockReportScreen: React.FC = () => {
     console.log('Request payload:', JSON.stringify(payload, null, 2));
 
     const response = await axios.post(apiEndpoint, payload, {
-      headers: DEFAULT_HEADERS,
+      headers: await getAuthHeaders(),
     });
 
     console.log('API Response:', JSON.stringify(response.data, null, 2));
@@ -783,9 +833,8 @@ const StockReportScreen: React.FC = () => {
     );
 
     const response = await axios.post(apiEndpoint, payload, {
-      headers: DEFAULT_HEADERS,
+      headers: await getAuthHeaders(),
     });
-
     console.log(
       'Zero Stock API Response:',
       JSON.stringify(response.data, null, 2),
@@ -971,7 +1020,7 @@ const StockReportScreen: React.FC = () => {
         data: payload,
         responseType: 'arraybuffer',
         headers: {
-          ...DEFAULT_HEADERS,
+          ...(await getAuthHeaders()),
           Accept: 'application/pdf',
         },
       });
@@ -1420,23 +1469,17 @@ const StockReportScreen: React.FC = () => {
             <View style={styles.formColumn}>
               <Text style={styles.label}>Item Sub Category</Text>
               {!datesSelected ? (
-                // Show a non-interactive placeholder explaining the dependency
                 <View style={[styles.input, styles.disabledFieldContainer]}>
                   <Text style={styles.disabledFieldText}>
                     Select From & To Date first
                   </Text>
-                </View>
-              ) : subCategoryLoading ? (
-                <View style={[styles.input, styles.dropdownLoading]}>
-                  <ActivityIndicator size="small" color="#E87830" />
-                  <Text style={styles.dropdownLoadingText}>Loading...</Text>
                 </View>
               ) : (
                 <MultiSelect
                   options={itemSubCategoryOptions}
                   selectedValues={itemSubCategory}
                   onSelectChange={logAndSetItemSubCategory}
-                  placeholder="--SELECT--"
+                  placeholder={subCategoryLoading ? 'Loading...' : '--SELECT--'}
                   primaryColor="#E87830"
                 />
               )}

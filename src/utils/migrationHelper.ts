@@ -22,7 +22,7 @@ export const migrateKey = async (key: string): Promise<boolean> => {
       // Already migrated
       return true;
     }
-    
+
     // Get value from AsyncStorage
     const value = await AsyncStorage.getItem(key);
     if (value !== null) {
@@ -30,7 +30,7 @@ export const migrateKey = async (key: string): Promise<boolean> => {
       await setSecureItem(key, value);
       console.log(`Successfully migrated ${key} to secure storage`);
     }
-    
+
     return true;
   } catch (error) {
     console.error(`Error migrating ${key}:`, error);
@@ -42,13 +42,15 @@ export const migrateKey = async (key: string): Promise<boolean> => {
  * Migrates all secure keys from AsyncStorage to Keychain
  * @returns An object with results of each key migration
  */
-export const migrateAllSecureKeys = async (): Promise<Record<string, boolean>> => {
+export const migrateAllSecureKeys = async (): Promise<
+  Record<string, boolean>
+> => {
   const results: Record<string, boolean> = {};
-  
+
   for (const key of SECURE_KEYS) {
     results[key] = await migrateKey(key);
   }
-  
+
   return results;
 };
 
@@ -62,7 +64,7 @@ export const isMigrationNeeded = async (key: string): Promise<boolean> => {
   if (asyncValue === null) {
     return false;
   }
-  
+
   const secureValue = await getSecureItem(key);
   return secureValue === null;
 };
@@ -73,19 +75,21 @@ export const isMigrationNeeded = async (key: string): Promise<boolean> => {
  * @param key The key to retrieve
  * @returns The value or null if not found
  */
-export const getSecureOrAsyncItem = async (key: string): Promise<string | null> => {
+export const getSecureOrAsyncItem = async (
+  key: string,
+): Promise<string | null> => {
   // First try to get from secure storage
   const secureValue = await getSecureItem(key);
   if (secureValue !== null) {
     return secureValue;
   }
-  
+
   // If not found, try AsyncStorage and migrate if found
   const asyncValue = await AsyncStorage.getItem(key);
   if (asyncValue !== null) {
     await setSecureItem(key, asyncValue);
     return asyncValue;
   }
-  
+
   return null;
-}; 
+};

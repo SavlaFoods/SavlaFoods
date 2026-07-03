@@ -116,7 +116,9 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
 
   // Get today's date in YYYY-MM-DD format
   const today = new Date();
-  const formattedToday = today.toISOString().split('T')[0];
+  const formattedToday = `${today.getFullYear()}-${String(
+    today.getMonth() + 1,
+  ).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const [orderBy, setOrderBy] = useState('');
   const orderByInputRef = React.useRef<TextInput>(null);
   // Reference for picker timer
@@ -326,15 +328,33 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
       setShowDatePicker(true);
     }, 10);
   };
-
-  // Format date for display
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    if (!dateString) return '';
+    try {
+      const datePart = dateString.split('T')[0].split(' ')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) return dateString;
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      const monthIndex = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (monthIndex < 0 || monthIndex > 11 || isNaN(day)) return dateString;
+      return `${monthNames[monthIndex]} ${day}, ${parts[0]}`;
+    } catch {
+      return dateString;
+    }
   };
 
   // Function to validate date format (YYYY-MM-DD)
@@ -346,19 +366,24 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
   // Function to check if date is valid
   const isValidDate = (dateString: string) => {
     if (!isValidDateFormat(dateString)) return false;
-
-    const date = new Date(dateString);
-    return !isNaN(date.getTime());
+    const parts = dateString.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+    return true;
   };
 
   // Function to check if delivery date is not in the past
   const isDeliveryDateValid = (dateString: string) => {
     if (!isValidDate(dateString)) return false;
-
-    const deliveryDate = new Date(dateString);
+    const parts = dateString.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const deliveryDate = new Date(year, month, day); // local time, no UTC shift
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to beginning of day for comparison
-
+    today.setHours(0, 0, 0, 0);
     return deliveryDate >= today;
   };
 
@@ -383,13 +408,24 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
     setOrderDetails(prev => ({ ...prev, CUST_DELIVERY_ADD: text }));
     setDeliveryLocationError('');
   };
-
   const onDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || new Date();
-    setShowDatePicker(Platform.OS === 'ios');
-    setSelectedDate(currentDate);
-    const formattedDate = currentDate.toISOString().split('T')[0];
-    setOrderDetails(prev => ({ ...prev, deliveryDate: formattedDate }));
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (event?.type === 'dismissed' || !selectedDate) return;
+    }
+    if (!selectedDate) return;
+    setSelectedDate(selectedDate);
+    const formatted = `${selectedDate.getFullYear()}-${String(
+      selectedDate.getMonth() + 1,
+    ).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
+    console.log('=== DATE DEBUG ===');
+    console.log('Raw selectedDate object:', selectedDate);
+    console.log('selectedDate.toString():', selectedDate.toString());
+    console.log('getFullYear:', selectedDate.getFullYear());
+    console.log('getMonth:', selectedDate.getMonth());
+    console.log('getDate:', selectedDate.getDate());
+    console.log('formatted string:', formatted);
+    setOrderDetails(prev => ({ ...prev, deliveryDate: formatted }));
     setDeliveryDateError('');
   };
 
@@ -871,7 +907,7 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
                 value={selectedDate}
                 mode="date"
                 display="spinner"
-                onChange={(event, date) => {
+                onChange={(_event, date) => {
                   if (date) setSelectedDate(date);
                 }}
                 minimumDate={new Date()}
@@ -881,7 +917,25 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
               <TouchableOpacity
                 style={styles.iosDatePickerConfirmBtn}
                 onPress={() => {
-                  onDateChange({}, selectedDate);
+                  console.log('=== iOS CONFIRM DEBUG ===');
+                  console.log('selectedDate at confirm:', selectedDate);
+                  console.log(
+                    'selectedDate.toString():',
+                    selectedDate.toString(),
+                  );
+                  console.log('getDate():', selectedDate.getDate());
+                  const formatted = `${selectedDate.getFullYear()}-${String(
+                    selectedDate.getMonth() + 1,
+                  ).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(
+                    2,
+                    '0',
+                  )}`;
+                  console.log('formatted at confirm:', formatted);
+                  setOrderDetails(prev => ({
+                    ...prev,
+                    deliveryDate: formatted,
+                  }));
+                  setDeliveryDateError('');
                   setShowDatePicker(false);
                 }}
               >

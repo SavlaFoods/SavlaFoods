@@ -1,11 +1,11 @@
 // src/config/api.config
 
-import { getSecureItem } from "../utils/secureStorage";
-import { getSecureOrAsyncItem } from "../utils/migrationHelper";
+import { getSecureItem } from '../utils/secureStorage';
+import { getSecureOrAsyncItem } from '../utils/migrationHelper';
 
-const YOUR_COMPUTER_IP = "202.189.234.140";
+const YOUR_COMPUTER_IP = '202.189.234.140';
 // const YOUR_COMPUTER_IP = '192.168.1.37';
-const PORT = "5000";
+const PORT = '5000';
 
 export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf`;
 
@@ -90,17 +90,17 @@ export const getImagePath = (imageFileName: string) => {
 };
 
 export const DEFAULT_HEADERS = {
-  "Content-Type": "application/json",
-  Accept: "application/json",
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
 };
 
 // Add this new function
 export const getAuthHeaders = async () => {
   // Get token from secure storage
-  const token = await getSecureOrAsyncItem("userToken");
+  const token = await getSecureOrAsyncItem('userToken');
 
   return {
     ...DEFAULT_HEADERS,
-    Authorization: token ? `Bearer ${token}` : "",
+    Authorization: token ? `Bearer ${token}` : '',
   };
 };

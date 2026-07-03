@@ -167,7 +167,7 @@ const FinanceScreen: React.FC = () => {
 
   const validateForm = (): boolean => {
     if (!formData.fromDate) {
-      Alert.alert('Validation Error', 'From Date is required');
+      Alert.alert('', 'From Date is required');
       return false;
     }
     if (formData.toDate && formData.fromDate > formData.toDate) {

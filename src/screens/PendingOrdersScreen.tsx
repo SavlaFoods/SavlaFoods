@@ -121,8 +121,7 @@ const PendingOrdersScreen = () => {
             // Ensure dates are in YYYY-MM-DD format without time component
             const normalizeDate = (dateString: string) => {
               if (!dateString) return dateString;
-              // Extract just the date part if it's an ISO string
-              return dateString.split('T')[0];
+              return dateString.split('T')[0].split(' ')[0];
             };
 
             order.items.forEach((item, index) => {
@@ -205,45 +204,30 @@ const PendingOrdersScreen = () => {
   };
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return '';
     try {
-      if (!dateString) return '';
-
-      // Extract date parts from string
-      let year, month, day;
-
-      // For YYYY-MM-DD format or ISO format with time component
-      if (dateString.match(/^\d{4}-\d{2}-\d{2}$/) || dateString.includes('T')) {
-        const [datePart] = dateString.split('T');
-        [year, month, day] = datePart.split('-');
-
-        // Parse month and year
-        const monthIndex = parseInt(month, 10) - 1;
-        const yearNum = parseInt(year, 10);
-
-        // Convert month number to month name
-        const monthNames = [
-          'January',
-          'February',
-          'March',
-          'April',
-          'May',
-          'June',
-          'July',
-          'August',
-          'September',
-          'October',
-          'November',
-          'December',
-        ];
-
-        // Format the date without modifying the day
-        return `${monthNames[monthIndex]} ${parseInt(day, 10)}, ${yearNum}`;
-      }
-
-      // Return original string if format is invalid
-      return dateString;
-    } catch (error) {
-      console.log('Error formatting date:', error, dateString);
+      const datePart = dateString.split('T')[0].split(' ')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) return dateString;
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      const monthIndex = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (monthIndex < 0 || monthIndex > 11 || isNaN(day)) return dateString;
+      return `${monthNames[monthIndex]} ${day}, ${parts[0]}`;
+    } catch {
       return dateString;
     }
   };

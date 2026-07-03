@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, Modal, TouchableOpacity, StyleSheet} from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface IOSDatePickerModalProps {
@@ -28,15 +28,17 @@ const IOSDatePickerModal = ({
           style={[
             styles.iosDatePickerContainer,
             isInward ? styles.inwardDatePicker : styles.outwardDatePicker,
-          ]}>
+          ]}
+        >
           <View style={styles.iosDatePickerHeader}>
             <Text style={styles.iosDatePickerTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
               <Text
                 style={[
                   styles.iosDatePickerDoneBtn,
-                  {color: isInward ? '#F48221' : '#4682B4'},
-                ]}>
+                  { color: isInward ? '#F48221' : '#4682B4' },
+                ]}
+              >
                 Done
               </Text>
             </TouchableOpacity>
@@ -55,9 +57,10 @@ const IOSDatePickerModal = ({
           <TouchableOpacity
             style={[
               styles.iosDatePickerConfirmBtn,
-              {backgroundColor: isInward ? '#F48221' : '#4682B4'},
+              { backgroundColor: isInward ? '#F48221' : '#4682B4' },
             ]}
-            onPress={onConfirm}>
+            onPress={onConfirm}
+          >
             <Text style={styles.iosDatePickerConfirmText}>Confirm Date</Text>
           </TouchableOpacity>
         </View>

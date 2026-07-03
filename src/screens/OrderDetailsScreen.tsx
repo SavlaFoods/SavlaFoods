@@ -90,10 +90,12 @@ const OrderDetailsScreen = ({
   const [cancelRemark, setCancelRemark] = useState('');
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
 
-  // Format current date for API call
   const getCurrentDate = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   };
 
   // Function to fetch pending orders with status
@@ -300,39 +302,34 @@ const OrderDetailsScreen = ({
       setDeletingItemId(null);
     }
   };
-
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
     try {
-      if (!dateString) return 'N/A';
-      if (dateString.match(/^\d{4}-\d{2}-\d{2}/) || dateString.includes('T')) {
-        const datePart = dateString.split('T')[0];
-        const [year, month, day] = datePart.split('-').map(Number);
-        const date = new Date(year, month - 1, day);
-        const monthNames = [
-          'January',
-          'February',
-          'March',
-          'April',
-          'May',
-          'June',
-          'July',
-          'August',
-          'September',
-          'October',
-          'November',
-          'December',
-        ];
-        return `${
-          monthNames[date.getMonth()]
-        } ${date.getDate()}, ${date.getFullYear()}`;
-      }
-      return dateString;
-    } catch (error) {
-      console.error('Error formatting date:', error, dateString);
+      const datePart = dateString.split('T')[0].split(' ')[0];
+      const parts = datePart.split('-');
+      if (parts.length !== 3) return dateString;
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      const monthIndex = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (monthIndex < 0 || monthIndex > 11 || isNaN(day)) return dateString;
+      return `${monthNames[monthIndex]} ${day}, ${parts[0]}`;
+    } catch {
       return dateString;
     }
   };
-
   const showCancelConfirmation = (order: Order) => {
     setSelectedOrder(order);
     setModalVisible(true);
@@ -413,12 +410,7 @@ const OrderDetailsScreen = ({
         showToast('Order cancelled successfully!', 'success');
         setTimeout(() => {
           setModalVisible(false);
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{ name: 'PendingOrdersScreen' }],
-            }),
-          );
+          navigation.goBack();
         }, 1500);
       } else {
         showToast(response.data.message || 'Failed to cancel order', 'error');
@@ -487,15 +479,7 @@ const OrderDetailsScreen = ({
                   <View>
                     <Text style={styles.infoLabelNew}>Order Date</Text>
                     <Text style={styles.infoValueNew}>
-                      {formatDate(
-                        new Date(
-                          new Date(order.orderDate).setDate(
-                            new Date(order.orderDate).getDate(),
-                          ),
-                        )
-                          .toISOString()
-                          .split('T')[0],
-                      )}
+                      {formatDate(order.orderDate)}
                     </Text>
                   </View>
                 </View>

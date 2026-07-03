@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  TouchableOpacity, 
   View,
   ActivityIndicator,
   Animated,
@@ -227,7 +227,7 @@ const HomeScreen: React.FC = () => {
               onPress: () => {
                 navigation.reset({
                   index: 0,
-                  routes: [{ name: 'LoginScreen' }],
+                  routes: [{ name: 'OtpVerificationScreen' }],
                 });
               },
             },

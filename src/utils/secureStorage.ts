@@ -1,3 +1,4 @@
+//securestorage
 import * as Keychain from 'react-native-keychain';
 
 // Function to securely store a value
@@ -7,7 +8,7 @@ export const setSecureItem = async (
 ): Promise<boolean> => {
   try {
     // Store the data in the keychain
-    await Keychain.setGenericPassword(key, value, {service: key});
+    await Keychain.setGenericPassword(key, value, { service: key });
     return true;
   } catch (error) {
     console.error(`Error storing ${key}:`, error);
@@ -19,7 +20,7 @@ export const setSecureItem = async (
 export const getSecureItem = async (key: string): Promise<string | null> => {
   try {
     // Retrieve the data from the keychain
-    const credentials = await Keychain.getGenericPassword({service: key});
+    const credentials = await Keychain.getGenericPassword({ service: key });
     if (credentials) {
       return credentials.password; // The actual value is stored in the password field
     }
@@ -34,7 +35,7 @@ export const getSecureItem = async (key: string): Promise<string | null> => {
 export const removeSecureItem = async (key: string): Promise<boolean> => {
   try {
     // Remove the data from the keychain
-    await Keychain.resetGenericPassword({service: key});
+    await Keychain.resetGenericPassword({ service: key });
     return true;
   } catch (error) {
     console.error(`Error removing ${key}:`, error);
@@ -45,7 +46,7 @@ export const removeSecureItem = async (key: string): Promise<boolean> => {
 // Function to check if a key exists
 export const hasSecureItem = async (key: string): Promise<boolean> => {
   try {
-    const result = await Keychain.getGenericPassword({service: key});
+    const result = await Keychain.getGenericPassword({ service: key });
     return !!result;
   } catch (error) {
     return false;

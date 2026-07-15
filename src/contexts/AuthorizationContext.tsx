@@ -1,3 +1,4 @@
+//AuthorizationContext.tsx
 import React, {
   createContext,
   useContext,
@@ -56,8 +57,10 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
   const initializeAuthorization = async () => {
     try {
       setIsLoading(true);
+      console.log('========== AUTH START ==========');
       const rarString = await getSecureItem('RAR');
       console.log('Initializing authorization with RAR:', rarString);
+      console.log('RAR from Keychain:', rarString);
 
       if (rarString) {
         const rarValues = parseRARString(rarString);
@@ -66,6 +69,12 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
         if (rarValues.length > 0) {
           const allowedScreens = getScreensByRAR(rarValues);
           const allowedModules = getModulesByRAR(rarValues);
+          console.log(
+            'Allowed Modules:',
+            allowedModules.map(m => m.name),
+          );
+          console.log('Allowed Screens:', allowedScreens);
+          console.log('Setting Authorization...');
           setUserAuthorizationState({
             rarValues,
             allowedScreens,
@@ -107,13 +116,14 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
           }
         }
       } else {
-        console.log('No RAR string found, setting authorization to null');
+        console.log('❌ No RAR found in Keychain');
         setUserAuthorizationState(null);
       }
     } catch (error) {
-      console.error('Error initializing authorization:', error);
+      console.error('❌ Authorization Error:', error);
       setUserAuthorizationState(null);
     } finally {
+      console.log('========== AUTH END ==========');
       setIsLoading(false);
       setIsInitialized(true);
     }
@@ -125,7 +135,7 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
     await setSecureItem('RAR', rarString);
     const allowedScreens = getScreensByRAR(rarValues);
     const allowedModules = getModulesByRAR(rarValues);
-    setUserAuthorizationState({rarValues, allowedScreens, allowedModules});
+    setUserAuthorizationState({ rarValues, allowedScreens, allowedModules });
     console.log(
       'User authorization set successfully with modules:',
       allowedModules.map(m => m.name),
@@ -180,6 +190,14 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    console.log('===== AUTH STATE UPDATED =====');
+    console.log('userAuthorization:', userAuthorization);
+    console.log('isLoading:', isLoading);
+    console.log('isInitialized:', isInitialized);
+    console.log('==============================');
+  }, [userAuthorization, isLoading, isInitialized]);
+
   return (
     <AuthorizationContext.Provider
       value={{
@@ -195,7 +213,8 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
         getAllowedModules,
         hasModuleAccess,
         debugAuthorization,
-      }}>
+      }}
+    >
       {children}
     </AuthorizationContext.Provider>
   );
@@ -211,7 +230,7 @@ export const useAuthorization = (): AuthorizationContextType => {
 };
 
 export const useScreenAuthorization = (screenName: string) => {
-  const {isScreenAllowed, getScreenAuthorization} = useAuthorization();
+  const { isScreenAllowed, getScreenAuthorization } = useAuthorization();
   return {
     isAllowed: isScreenAllowed(screenName),
     authorization: getScreenAuthorization(screenName),
@@ -219,7 +238,7 @@ export const useScreenAuthorization = (screenName: string) => {
 };
 
 export const useModuleAuthorization = (moduleId: number) => {
-  const {hasModuleAccess, getAllowedModules} = useAuthorization();
+  const { hasModuleAccess, getAllowedModules } = useAuthorization();
   return {
     hasAccess: hasModuleAccess(moduleId),
     allowedModules: getAllowedModules(),
@@ -227,7 +246,7 @@ export const useModuleAuthorization = (moduleId: number) => {
 };
 
 export const useIsStockViewerOnly = (): boolean => {
-  const {userAuthorization} = useAuthorization();
+  const { userAuthorization } = useAuthorization();
   return (
     !!userAuthorization &&
     userAuthorization.rarValues.length === 1 &&
@@ -237,13 +256,13 @@ export const useIsStockViewerOnly = (): boolean => {
 
 // New helper: user can add to cart only if they have RAR 1 (Create Order)
 export const useCanAddToCart = (): boolean => {
-  const {userAuthorization} = useAuthorization();
+  const { userAuthorization } = useAuthorization();
   return !!userAuthorization && userAuthorization.rarValues.includes(1);
 };
 
 // Helper: user has any authorization (including fallback for no RAR)
 export const useHasAnyAuthorization = (): boolean => {
-  const {userAuthorization} = useAuthorization();
+  const { userAuthorization } = useAuthorization();
   return (
     !!userAuthorization &&
     (userAuthorization.rarValues.length > 0 ||

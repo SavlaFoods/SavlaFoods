@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { View, Image, StyleSheet, Text, ActivityIndicator } from "react-native";
-import { useNavigation, NavigationProp } from "@react-navigation/native";
-import { RootStackParamList } from "../type/type";
-import { migrateAllSecureKeys } from "../utils/migrationHelper";
-import { getSecureItem } from "../utils/secureStorage";
-import axios from "axios";
-import { useAuthorization } from "../contexts/AuthorizationContext";
+import React, { useEffect, useState } from 'react';
+import { View, Image, StyleSheet, Text, ActivityIndicator } from 'react-native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { RootStackParamList } from '../type/type';
+import { migrateAllSecureKeys } from '../utils/migrationHelper';
+// import { getSecureItem } from '../utils/secureStorage';
+import { getSecureItem, removeSecureItem } from '../utils/secureStorage';
+import axios from 'axios';
+import { useAuthorization } from '../contexts/AuthorizationContext';
 
 const SplashScreen: React.FC = () => {
   const navigation =
-    useNavigation<NavigationProp<RootStackParamList, "SplashScreen">>();
+    useNavigation<NavigationProp<RootStackParamList, 'SplashScreen'>>();
   const [migrationComplete, setMigrationComplete] = useState(false);
   const { initializeAuthorization, isLoading: authLoading } =
     useAuthorization();
@@ -19,41 +20,63 @@ const SplashScreen: React.FC = () => {
       try {
         // Perform migration from AsyncStorage to Keychain
         const results = await migrateAllSecureKeys();
-        console.log("Migration results:", results);
+        console.log('Migration results:', results);
         setMigrationComplete(true);
 
-        // Check if user is already logged in
-        const token = await getSecureItem("userToken");
+        // // Check if user is already logged in
+        // const token = await getSecureItem('userToken');
+        // const rar = await getSecureItem('RAR');
 
-        // Set the token in axios defaults if it exists
-        if (token) {
-          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-          console.log("Token set in axios defaults on app startup");
+        const token = await getSecureItem('userToken');
+        const rar = await getSecureItem('RAR');
+
+        console.log('========== SPLASH ==========');
+        console.log('TOKEN:', token);
+        console.log('RAR:', rar);
+        console.log('TOKEN EXISTS:', token !== null);
+        console.log('RAR EXISTS:', rar !== null);
+        console.log('============================');
+
+        const hasValidSession = token !== null && rar !== null;
+
+        if (hasValidSession) {
+          console.log('Setting Authorization Header...');
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          console.log('Token set in axios defaults on app startup');
           await initializeAuthorization();
-          console.log("Authorization initialized");
+          console.log('Authorization initialized');
+        } else if (token) {
+          // Stale/broken session: token exists but RAR was never saved.
+          // Wipe it so we don't loop back into NoAccess.
+          console.log('⚠️ Token found without RAR — clearing stale session');
+          await removeSecureItem('userToken');
+          await removeSecureItem('RAR');
+          delete axios.defaults.headers.common['Authorization'];
         }
 
         // Navigate to appropriate screen after a short delay
         setTimeout(() => {
-          if (token) {
+          if (hasValidSession) {
             navigation.reset({
               index: 0,
-              routes: [{ name: "Main" }],
+              routes: [{ name: 'Main' }],
             });
+            console.log('➡️ Navigating to MAIN');
           } else {
             navigation.reset({
               index: 0,
-              routes: [{ name: "OtpVerificationScreen" }],
+              routes: [{ name: 'OtpVerificationScreen' }],
             });
+            console.log('➡️ Navigating to LOGIN');
           }
         }, 1000);
       } catch (error) {
-        console.error("Initialization error:", error);
+        console.error('❌ Splash Initialization Error:', error);
         // Navigate to login screen on error
         setTimeout(() => {
           navigation.reset({
             index: 0,
-            routes: [{ name: "OtpVerificationScreen" }],
+            routes: [{ name: 'OtpVerificationScreen' }],
           });
         }, 1000);
       }
@@ -65,7 +88,7 @@ const SplashScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../assets/SavlaLogo.jpg")}
+        source={require('../assets/SavlaLogo.jpg')}
         style={styles.logo}
         resizeMode="contain"
         testID="splash-logo"
@@ -84,9 +107,9 @@ const SplashScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   logo: {
     width: 200,
@@ -95,8 +118,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 18,
-    fontFamily: "Roboto",
-    fontWeight: "bold",
+    fontFamily: 'Roboto',
+    fontWeight: 'bold',
     marginTop: 10,
   },
   loader: {

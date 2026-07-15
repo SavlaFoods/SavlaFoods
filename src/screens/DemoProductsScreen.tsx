@@ -8,8 +8,8 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import {useNavigation, NavigationProp} from '@react-navigation/native';
-import {RootStackParamList} from '../type/type';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { RootStackParamList } from '../type/type';
 
 const demoProducts = [
   {
@@ -59,7 +59,7 @@ const DemoProductsScreen: React.FC = () => {
       'Demo Mode',
       `You selected ${productName}. Login to access full inventory management features.`,
       [
-        {text: 'Cancel', style: 'cancel'},
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Login Now',
           onPress: () => navigation.navigate('OtpVerificationScreen'),
@@ -68,10 +68,11 @@ const DemoProductsScreen: React.FC = () => {
     );
   };
 
-  const renderProductItem = ({item}: {item: any}) => (
+  const renderProductItem = ({ item }: { item: any }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => handleProductPress(item.name)}>
+      onPress={() => handleProductPress(item.name)}
+    >
       <Image source={item.image} style={styles.image} />
       <View style={styles.productInfo}>
         <Text style={styles.name}>{item.name}</Text>
@@ -87,7 +88,8 @@ const DemoProductsScreen: React.FC = () => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}>
+          onPress={() => navigation.goBack()}
+        >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Demo Product Catalog</Text>
@@ -109,7 +111,8 @@ const DemoProductsScreen: React.FC = () => {
 
       <TouchableOpacity
         style={styles.loginPrompt}
-        onPress={() => navigation.navigate('OtpVerificationScreen')}>
+        onPress={() => navigation.navigate('OtpVerificationScreen')}
+      >
         <Text style={styles.loginPromptText}>
           Ready to get started? Login Now →
         </Text>
@@ -174,7 +177,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,

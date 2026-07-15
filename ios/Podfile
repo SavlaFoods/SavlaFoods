@@ -32,5 +32,17 @@ target 'SavlaFoods' do
       
       # :ccache_enabled => true
     )
+
+    # Fix fmt 11.0.2 consteval compile error with Xcode 26.4+ Clang
+    fmt_base_h = File.join(Pod::Config.instance.project_pods_root, 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_h)
+      File.chmod(0644, fmt_base_h)
+      text = File.read(fmt_base_h)
+      patched = text.gsub(
+        '#elif defined(__apple_build_version__) && __apple_build_version__ < 14000029L',
+        '#elif defined(__apple_build_version__)'
+      )
+      File.write(fmt_base_h, patched)
+    end
   end
 end

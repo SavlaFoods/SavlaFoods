@@ -1,3 +1,4 @@
+//AuthorizedBottomTabNavigator.tsx
 import React, { useMemo, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuthorization } from '../contexts/AuthorizationContext';
@@ -25,7 +26,8 @@ interface TabConfig {
 }
 
 const AuthorizedBottomTabNavigator: React.FC = () => {
-  const { hasModuleAccess, debugAuthorization } = useAuthorization();
+  const { hasModuleAccess, debugAuthorization, userAuthorization } =
+    useAuthorization();
 
   // Define tabs and associate with module IDs
   const allTabs: TabConfig[] = useMemo(
@@ -116,7 +118,6 @@ const AuthorizedBottomTabNavigator: React.FC = () => {
     }
 
     // If no module access, check if user has HomeScreen-only access (for comma RAR case)
-    const { userAuthorization } = useAuthorization();
     if (
       userAuthorization &&
       userAuthorization.allowedScreens.includes('HomeScreen')
@@ -126,13 +127,37 @@ const AuthorizedBottomTabNavigator: React.FC = () => {
     }
 
     return [];
-  }, [allTabs, hasModuleAccess]);
+  }, [allTabs, hasModuleAccess, userAuthorization]);
 
   useEffect(() => {
     debugAuthorization();
   }, [debugAuthorization]);
 
+  console.log('================================');
+  console.log('userAuthorization =', userAuthorization);
+  console.log('rarValues =', userAuthorization?.rarValues);
+  console.log('allowedScreens =', userAuthorization?.allowedScreens);
+
+  console.log('Home =', hasModuleAccess(1));
+  console.log('Invoice =', hasModuleAccess(2));
+  console.log('Orders =', hasModuleAccess(1));
+  console.log('Reports =', hasModuleAccess(5));
+  console.log('Alert =', hasModuleAccess(4));
+
+  console.log('authorizedTabs =', authorizedTabs);
+  console.log('================================');
+
   if (authorizedTabs.length === 0) {
+    console.log('🚨 NO ACCESS SCREEN 🚨');
+    console.log('userAuthorization:', userAuthorization);
+    console.log('rarValues:', userAuthorization?.rarValues);
+    console.log('allowedScreens:', userAuthorization?.allowedScreens);
+    console.log('authorizedTabs:', authorizedTabs);
+    console.log('Home Access:', hasModuleAccess(1));
+    console.log('Invoice Access:', hasModuleAccess(2));
+    console.log('Reports Access:', hasModuleAccess(5));
+    console.log('Alert Access:', hasModuleAccess(4));
+    console.log('========================');
     return (
       <Tab.Navigator>
         <Tab.Screen

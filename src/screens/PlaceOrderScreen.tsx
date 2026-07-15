@@ -1,7 +1,6 @@
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
 import axios from 'axios';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {

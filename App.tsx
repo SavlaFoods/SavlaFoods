@@ -37,7 +37,7 @@ import { RootStackParamList, MainStackParamList } from './src/type/type';
 
 import BottomTabNavigator from './src/components/BottomTabNavigator';
 import AuthorizedBottomTabNavigator from './src/components/AuthorizedBottomTabNavigator';
-import { AuthorizationProvider } from './src/contexts/AuthorizationContext';
+
 import OrderConfirmationScreen from './src/screens/OrderConfirmationScreen';
 import OrderHistoryScreen from './src/screens/OrderHistoryScreen';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -49,6 +49,16 @@ import OutwardDetailsScreen from './src/screens/OutwardDetailsScreen.tsx';
 import OutstandingReportScreen from './src/screens/Invoice/OutstandingReportScreen.tsx';
 import InvoiceDetailsScreen from './src/screens/Invoice/InvoiceDetailsScreen.tsx';
 // import ZeroStockReportScreen from './src/screens/stocks/ZeroStockReportScreen.tsx';
+import { useRef } from 'react';
+import { View, Alert } from 'react-native';
+import type { NavigationContainerRef } from '@react-navigation/native';
+import { useSessionTimeoutWatcher } from './src/hooks/useSessionTimeoutWatcher';
+
+import {
+  AuthorizationProvider,
+  useAuthorization,
+} from './src/contexts/AuthorizationContext';
+import AlertScreen from './src/screens/Alert/AlertScreen.tsx';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const MainStack = createNativeStackNavigator<any>();
@@ -209,11 +219,13 @@ const MainStackNavigator: React.FC = () => {
         component={LotReportScreen as unknown as React.ComponentType<any>}
         options={{ headerShown: false }}
       />
-      {/* <MainStack.Screen
-          name="ReportSummaryScreen"
-          component={ReportSummaryScreen}
-          options={{title: 'Lot Report'}}
-        /> */}
+
+      <MainStack.Screen
+        name="AlertScreen"
+        component={AlertScreen}
+        options={{ title: 'Alerts', headerShown: true }}
+      />
+
       <MainStack.Screen
         name="PendingOrdersScreen"
         component={PendingOrdersScreen as unknown as React.ComponentType<any>}
@@ -279,7 +291,36 @@ const MainStackNavigator: React.FC = () => {
   );
 };
 
+const SessionTimeoutWrapper: React.FC<{
+  navigationRef: React.RefObject<NavigationContainerRef<RootStackParamList> | null>; // add | null here too
+  children: React.ReactNode;
+}> = ({ navigationRef, children }) => {
+  const { clearAuthorization } = useAuthorization();
+
+  const handleTimeout = () => {
+    clearAuthorization();
+    navigationRef.current?.reset({
+      index: 0,
+      routes: [{ name: 'OtpVerificationScreen' }],
+    });
+    Alert.alert(
+      'Session Expired',
+      'You have been logged out due to inactivity.',
+    );
+  };
+
+  const { pingActivity } = useSessionTimeoutWatcher(handleTimeout);
+
+  return (
+    <View style={{ flex: 1 }} onTouchStart={pingActivity}>
+      {children}
+    </View>
+  );
+};
+
 function App(): JSX.Element {
+  const navigationRef =
+    useRef<NavigationContainerRef<RootStackParamList> | null>(null);
   // Run migration when app starts
   useEffect(() => {
     const migrateData = async () => {
@@ -298,49 +339,51 @@ function App(): JSX.Element {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthorizationProvider>
-          <DisplayNameProvider>
-            <NotificationProvider>
-              <CartProvider>
-                <CustomerProvider>
-                  <NetworkProvider>
-                    <NavigationContainer>
-                      <RootStack.Navigator
-                        initialRouteName="SplashScreen"
-                        screenOptions={{
-                          headerShown: false,
-                          gestureEnabled: false,
-                          contentStyle: { flex: 1 },
-                        }}
-                      >
-                        <RootStack.Screen
-                          name="SplashScreen"
-                          component={SplashScreen}
-                        />
-                        <RootStack.Screen
-                          name="OtpVerificationScreen"
-                          component={OtpVerificationScreen}
-                          options={{
+          <SessionTimeoutWrapper navigationRef={navigationRef}>
+            <DisplayNameProvider>
+              <NotificationProvider>
+                <CartProvider>
+                  <CustomerProvider>
+                    <NetworkProvider>
+                      <NavigationContainer ref={navigationRef}>
+                        <RootStack.Navigator
+                          initialRouteName="SplashScreen"
+                          screenOptions={{
                             headerShown: false,
                             gestureEnabled: false,
+                            contentStyle: { flex: 1 },
                           }}
-                        />
-                        <RootStack.Screen
-                          name="Main"
-                          component={MainStackNavigator}
-                        />
-                        <RootStack.Screen
-                          name="HomeScreen"
-                          component={MainStackNavigator}
-                          options={{ headerShown: false }}
-                        />
-                      </RootStack.Navigator>
-                    </NavigationContainer>
-                    <OfflineNotice />
-                  </NetworkProvider>
-                </CustomerProvider>
-              </CartProvider>
-            </NotificationProvider>
-          </DisplayNameProvider>
+                        >
+                          <RootStack.Screen
+                            name="SplashScreen"
+                            component={SplashScreen}
+                          />
+                          <RootStack.Screen
+                            name="OtpVerificationScreen"
+                            component={OtpVerificationScreen}
+                            options={{
+                              headerShown: false,
+                              gestureEnabled: false,
+                            }}
+                          />
+                          <RootStack.Screen
+                            name="Main"
+                            component={MainStackNavigator}
+                          />
+                          <RootStack.Screen
+                            name="HomeScreen"
+                            component={MainStackNavigator}
+                            options={{ headerShown: false }}
+                          />
+                        </RootStack.Navigator>
+                      </NavigationContainer>
+                      <OfflineNotice />
+                    </NetworkProvider>
+                  </CustomerProvider>
+                </CartProvider>
+              </NotificationProvider>
+            </DisplayNameProvider>
+          </SessionTimeoutWrapper>
         </AuthorizationProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

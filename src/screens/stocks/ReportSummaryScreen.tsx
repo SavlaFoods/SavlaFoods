@@ -162,13 +162,17 @@ const ReportSummaryScreen: React.FC = () => {
       return '0';
     }
 
-    if (num % 1 === 0 || Math.abs(num) >= 1000) {
-      return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    // Whole numbers
+    if (Number.isInteger(num)) {
+      return num.toLocaleString('en-IN', {
+        maximumFractionDigits: 0,
+      });
     }
 
-    return num.toLocaleString('en-US', {
-      maximumFractionDigits: decimals,
+    // Decimal numbers
+    return num.toLocaleString('en-IN', {
       minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     });
   };
 
@@ -178,12 +182,15 @@ const ReportSummaryScreen: React.FC = () => {
     if (type !== reportType) {
       setReportType(type);
       setSummaryData(null);
+      handleApplyDates(type);
     }
   };
 
   // ─── Fetch Data ───────────────────────────────────────────────────────────
 
-  const handleApplyDates = async () => {
+  const handleApplyDates = async (typeOverride?: 'all' | 'itemwise') => {
+    const currentType = typeOverride ?? reportType;
+
     setSummaryData(null);
     setLoading(true);
     setError(null);
@@ -204,7 +211,7 @@ const ReportSummaryScreen: React.FC = () => {
       };
 
       const apiEndpoint =
-        reportType === 'all'
+        currentType === 'all'
           ? API_ENDPOINTS.GET_ALL_SUMMARY
           : API_ENDPOINTS.GET_ITEMWISE_SUMMARY;
 
@@ -216,7 +223,7 @@ const ReportSummaryScreen: React.FC = () => {
       });
 
       if (response.data && response.data.success) {
-        if (reportType === 'all') {
+        if (currentType === 'all') {
           setSummaryData(response.data.data as SummaryData);
         } else {
           setSummaryData(response.data.data as unknown as ItemWiseData[]);
@@ -399,11 +406,11 @@ const ReportSummaryScreen: React.FC = () => {
           Item-wise Summary ({itemWiseData.length} items)
         </Text>
 
-        <View style={styles.minimumScrollHint}>
+        {/* <View style={styles.minimumScrollHint}>
           <Text style={styles.minimumScrollHintText}>
             ⟷ Scroll horizontally to see more columns
           </Text>
-        </View>
+        </View> */}
 
         <View style={styles.tableWrapper}>
           <ScrollView
@@ -524,7 +531,10 @@ const ReportSummaryScreen: React.FC = () => {
         </View>
 
         {/* Apply Button */}
-        <TouchableOpacity style={styles.applyButton} onPress={handleApplyDates}>
+        <TouchableOpacity
+          style={styles.applyButton}
+          onPress={() => handleApplyDates()}
+        >
           <Text style={styles.applyButtonText}>Apply Date Range</Text>
         </TouchableOpacity>
 
@@ -595,7 +605,7 @@ const ReportSummaryScreen: React.FC = () => {
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity
               style={styles.retryButton}
-              onPress={handleApplyDates}
+              onPress={() => handleApplyDates()}
             >
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>

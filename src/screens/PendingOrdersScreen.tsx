@@ -193,6 +193,7 @@ const PendingOrdersScreen = () => {
       fetchPendingOrder(page + 1);
     }
   };
+
   const backHandler = () => {
     navigation.goBack();
   };

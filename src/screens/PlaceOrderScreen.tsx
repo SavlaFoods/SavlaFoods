@@ -90,6 +90,12 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const toastOffset = useRef(new Animated.Value(300)).current;
+  const exceededRef = useRef<{ name: string; available: number } | null>(null);
+
+  // ADD this state near your other useState declarations
+  const [quantityInputs, setQuantityInputs] = useState<{
+    [lotNo: string]: string;
+  }>({});
 
   useEffect(() => {
     if (!isInitialized && (selectedItems.length > 0 || cartItems.length > 0)) {
@@ -125,8 +131,24 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
 
       setGroupedOrderItems(grouped);
       setIsInitialized(true);
+      const initialInputs: { [lotNo: string]: string } = {};
+      combinedItems.forEach(item => {
+        initialInputs[item.LOT_NO] = String(item.ORDERED_QUANTITY);
+      });
+      setQuantityInputs(initialInputs);
     }
   }, [selectedItems, cartItems, isInitialized]);
+
+  useEffect(() => {
+    if (exceededRef.current) {
+      const { available } = exceededRef.current;
+      showToast(
+        `Requested quantity cannot exceed available quantity (${available})`,
+        'error',
+      );
+      exceededRef.current = null;
+    }
+  }, [groupedOrderItems]);
 
   const handleQuantityChange = useCallback(
     (
@@ -139,31 +161,49 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
         const group = [...(newGroups[itemName] || [])];
         const itemIndex = group.findIndex(item => item.LOT_NO === lotNo);
 
-        if (itemIndex !== -1) {
-          const item = group[itemIndex];
-          let newQuantity: number;
+        if (itemIndex === -1) return prevGroups;
 
-          if (change === 'increment') {
-            newQuantity = item.ORDERED_QUANTITY + 1;
-          } else if (change === 'decrement') {
-            newQuantity = Math.max(1, item.ORDERED_QUANTITY - 1); // Ensure minimum value of 1
+        const item = group[itemIndex];
+        let newQuantity: number;
+        let displayText: string;
+
+        if (change === 'increment') {
+          newQuantity = Math.min(item.ORDERED_QUANTITY + 1, item.AVAILABLE_QTY);
+          displayText = String(newQuantity);
+        } else if (change === 'decrement') {
+          newQuantity = Math.max(0, item.ORDERED_QUANTITY - 1);
+          displayText = String(newQuantity);
+        } else {
+          const sanitized = change.replace(/[^0-9]/g, '');
+          const parsed = sanitized === '' ? 0 : parseInt(sanitized, 10);
+
+          if (parsed > item.AVAILABLE_QTY) {
+            // ADD: flag the overflow so we can alert outside setGroupedOrderItems
+            newQuantity = item.AVAILABLE_QTY;
+            displayText = String(item.AVAILABLE_QTY);
+            exceededRef.current = {
+              name: itemName,
+              available: item.AVAILABLE_QTY,
+            };
           } else {
-            newQuantity = parseFloat(change) || 1; // Default to 1 if parse fails
-            newQuantity = Math.max(1, newQuantity); // Ensure minimum value of 1
+            newQuantity = parsed;
+            displayText = sanitized;
           }
-
-          newQuantity = Math.min(newQuantity, item.AVAILABLE_QTY);
-
-          // Calculate net quantity as QUANTITY - REQUESTED_QUANTITY
-          const netQuantity = Math.max(0, item.QUANTITY - newQuantity);
-
-          group[itemIndex] = {
-            ...item,
-            ORDERED_QUANTITY: newQuantity,
-            NET_QUANTITY: netQuantity,
-          };
-          newGroups[itemName] = group;
         }
+
+        const netQuantity = Math.max(0, item.QUANTITY - newQuantity);
+
+        group[itemIndex] = {
+          ...item,
+          ORDERED_QUANTITY: newQuantity,
+          NET_QUANTITY: netQuantity,
+        };
+        newGroups[itemName] = group;
+
+        setQuantityInputs(prevInputs => ({
+          ...prevInputs,
+          [lotNo]: displayText,
+        }));
 
         return newGroups;
       });
@@ -280,7 +320,9 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
         item => !item.ORDERED_QUANTITY || item.ORDERED_QUANTITY <= 0,
       );
       if (invalidItems.length > 0) {
-        showCustomErrorAlert('Please specify valid quantities for all items');
+        showCustomErrorAlert(
+          '0 quantity orders cannot be placed. Please enter a valid quantity.',
+        );
         setIsLoading(false);
         return;
       }
@@ -355,12 +397,12 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
               <TouchableOpacity
                 style={[
                   styles.quantityButton,
-                  item.ORDERED_QUANTITY <= 1 && styles.disabledQuantityButton,
+                  item.ORDERED_QUANTITY <= 0 && styles.disabledQuantityButton,
                 ]}
                 onPress={() =>
                   handleQuantityChange(groupName, item.LOT_NO, 'decrement')
                 }
-                disabled={item.ORDERED_QUANTITY <= 1}
+                disabled={item.ORDERED_QUANTITY <= 0}
               >
                 <Text style={styles.quantityButtonText}>-</Text>
               </TouchableOpacity>
@@ -371,7 +413,9 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
                   styles.input,
                   styles.quantityInput,
                 ]}
-                value={String(item.ORDERED_QUANTITY)}
+                value={
+                  quantityInputs[item.LOT_NO] ?? String(item.ORDERED_QUANTITY)
+                }
                 onChangeText={value =>
                   handleQuantityChange(groupName, item.LOT_NO, value)
                 }

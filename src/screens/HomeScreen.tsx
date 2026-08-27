@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity, 
+  TouchableOpacity,
   View,
   ActivityIndicator,
   Animated,
@@ -89,6 +89,9 @@ type SearchResultItem = {
   CATEGORY_IMAGE_NAME: string;
   SUBCATEGORY_IMAGE_NAME: string;
   imageUrl?: any;
+  REQUESTED_QTY?: number; // ADD THIS
+  ORDER_COUNT?: number; // ADD THIS
+  ORDER_NOS?: string;
 };
 
 const { width } = Dimensions.get('window');
@@ -131,11 +134,20 @@ const HomeScreen: React.FC = () => {
   const [wasDisconnected, setWasDisconnected] = useState(false);
   const isStockViewerOnly = useIsStockViewerOnly();
   const canAddToCart = useCanAddToCart();
-
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const { cartItems, clearCart } = useCart() || {};
   const cartItemCount = cartItems?.length || 0;
+  const [refreshing, setRefreshing] = useState(false);
 
   // Handle back button press to prevent navigation to login screen
+
+  const onRefresh = async () => {
+    if (!CustomerID) return;
+
+    setRefreshing(true);
+    await fetchCategories(CustomerID);
+    setRefreshing(false);
+  };
 
   const handleAccountSwitch = useCallback(() => {
     setCategories([]);
@@ -176,6 +188,8 @@ const HomeScreen: React.FC = () => {
   // Display name is now handled by DisplayNameContext
 
   const fetchCategories = useCallback(async (customerId: string) => {
+    setLoadingCategories(true);
+
     try {
       interface CategoryResponse {
         output: CategoryItem[];
@@ -187,10 +201,11 @@ const HomeScreen: React.FC = () => {
         { timeout: 10000 },
       );
 
-      if (response?.output) {
+      if (response?.output && response.output.length > 0) {
         const uniqueCategories = response.output.reduce(
           (acc: CategoryItem[], current: CategoryItem) => {
             const exists = acc.find(item => item.CATID === current.CATID);
+
             if (!exists) {
               return [
                 ...acc,
@@ -201,6 +216,7 @@ const HomeScreen: React.FC = () => {
                 },
               ];
             }
+
             return acc;
           },
           [],
@@ -212,31 +228,17 @@ const HomeScreen: React.FC = () => {
 
         setCategories(sortedCategories);
         setFilteredCategories(sortedCategories);
-      }
-    } catch (error: any) {
-      console.error('Error fetching categories:', error);
-
-      // If token expired / unauthorized
-      if (error?.response?.status === 401) {
-        Alert.alert(
-          'Session Expired',
-          'Your login session has expired. Please login again to continue.',
-          [
-            {
-              text: 'Login',
-              onPress: () => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'OtpVerificationScreen' }],
-                });
-              },
-            },
-          ],
-          { cancelable: false },
-        );
       } else {
-        Alert.alert('Error', 'Failed to fetch categories');
+        setCategories([]);
+        setFilteredCategories([]);
       }
+    } catch (error) {
+      console.error(error);
+
+      setCategories([]);
+      setFilteredCategories([]);
+    } finally {
+      setLoadingCategories(false);
     }
   }, []);
 
@@ -277,6 +279,13 @@ const HomeScreen: React.FC = () => {
               item.BOX_QUANTITY ?? item.box_quantity ?? item.Box_Quantity ?? 0,
             AVAILABLE_QTY:
               item.AVAILABLE_QTY ?? item.available_qty ?? item.Quantity ?? 0,
+            REQUESTED_QTY:
+              item.REQUESTED_QTY ??
+              item.TOTAL_REQUESTED_QTY ??
+              item.requested_qty ??
+              0,
+            ORDER_COUNT: item.ORDER_COUNT ?? item.order_count ?? 0,
+            ORDER_NOS: item.ORDER_NOS ?? item.order_nos ?? null,
             imageUrl: getCategoryImage(item.ITEM_CATEG_ID),
           }));
 
@@ -481,6 +490,12 @@ const HomeScreen: React.FC = () => {
             </View>
             <View style={styles.detailRow}>
               <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Requested Qty</Text>
+                <Text style={styles.detailValue}>
+                  {formatQuantity(item.REQUESTED_QTY)}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Remarks</Text>
                 <Text style={styles.detailValue}>{item.REMARKS || ''}</Text>
               </View>
@@ -657,9 +672,23 @@ const HomeScreen: React.FC = () => {
                 keyExtractor={item => item.CATID}
                 contentContainerStyle={styles.cardContainer}
                 scrollEnabled={true}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
                 ListEmptyComponent={
                   <View style={styles.emptyMessage}>
-                    <Text>No Categories Found</Text>
+                    {loadingCategories ? (
+                      <ActivityIndicator size="large" color="#F48221" />
+                    ) : (
+                      <>
+                        <Text style={styles.emptyTitle}>
+                          Unable to load categories
+                        </Text>
+                        <Text style={styles.emptySubtitle}>
+                          Please pull down to refresh or try login again in a
+                          few moments.
+                        </Text>
+                      </>
+                    )}
                   </View>
                 }
               />
@@ -922,6 +951,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#007BFA',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 10,
+  },
+
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });
 

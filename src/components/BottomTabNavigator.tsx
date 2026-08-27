@@ -15,7 +15,7 @@ import { ParamListBase } from '@react-navigation/native';
 
 // Import your screens
 import HomeScreen from '../screens/HomeScreen';
-import AlertScreen from '../screens/AlertScreen';
+import AlertScreen from '../screens/Alert/AlertScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 import InwardOutwardReportScreen from '../screens/InwardOutwardReportScreen';

@@ -35,6 +35,7 @@ import { getSecureItem, setSecureItem } from '../utils/secureStorage';
 import { useAuthorization } from '../contexts/AuthorizationContext';
 import { parseRARString } from '../type/authorization';
 import { useDisplayName } from '../contexts/DisplayNameContext';
+import { recordActivity } from '../utils/sessionTimeout';
 
 // Get screen dimensions
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -259,6 +260,8 @@ const OtpVerificationScreen: React.FC<{
           setSecureItem('FK_CUST_GROUP_ID', CustomerGroupID.toString()),
           setSecureItem('RAR', RAR || ''), // Store RAR value
         ]);
+
+        await recordActivity();
 
         // Update display name in context
         setDisplayName(DisplayName);

@@ -8,6 +8,7 @@ const YOUR_COMPUTER_IP = '202.189.234.140';
 const PORT = '5000';
 
 export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf`;
+// export const BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}`;
 
 export const API_ENDPOINTS = {
   LOGIN: `${API_BASE_URL}/getUserAccountID`,
@@ -33,8 +34,10 @@ export const API_ENDPOINTS = {
   GET_PENDING_ORDERS: `${API_BASE_URL}/order/getPendingOrders`,
   UPDATE_PENDING_ORDER: `${API_BASE_URL}/order/updatePendingOrder`,
   GET_CANCEL_ORDER: `${API_BASE_URL}/order/cancelOrder`,
-  //DeleteOrder
   DELETE_ORDER: `${API_BASE_URL}/order/deleteOrder`,
+
+  //labor
+  GET_LABOUR_CHARGES: `${API_BASE_URL}/labourCharges/getlabourcharges`,
 
   //Inward/OutwardReport
   GET_INWARD_REPORT: `${API_BASE_URL}/reports/getInwardData`,
@@ -64,6 +67,7 @@ export const API_ENDPOINTS = {
   //PDF
   GET_STOCK_PDF_REPORT: `${API_BASE_URL}/stocks/getStockpdf`,
   GET_ZERO_STOCK_PDF_REPORT: `${API_BASE_URL}/stocks/getZeroStockpdf`,
+  GET_INVOICESUMMARY_PDF_REPORT: `${API_BASE_URL}/invoice/getInvoicepdf`,
 
   //Invoice
 
@@ -75,11 +79,18 @@ export const API_ENDPOINTS = {
   GET_ALL_CATEGORIES_SUBCATEGORIES: `${API_BASE_URL}/search/CategorySubAvailability`,
   GET_ALL_CATEGORIES_SUBCATEGORIES_OUTWARD: `${API_BASE_URL}/search/OutwardCategorySubAvailability`,
 
+  GET_GRN_DETAILS_PDF: `${API_BASE_URL}/reports/GRNdetailsPDF`,
+  GET_DC_DETAILS_PDF: `${API_BASE_URL}/lots/deliveryChallanDetailsPDF`,
+
   //Stock Report
   GET_STOCK_CATEGORIES: `${API_BASE_URL}/stocks/StockCategorySubAvailability`,
 
   //zero stock report
   GET_ZERO_CATEGORIES: `${API_BASE_URL}/zerostock/ZeroStockCatSubAvailability`,
+
+  //Alerts
+  EXPIRY_ALERTS: (customerID: string | number) =>
+    `${API_BASE_URL}/expiry-alerts/${customerID}`,
 };
 
 export const BASE_IMAGE_PATH = `${API_BASE_URL}/assets/images`;

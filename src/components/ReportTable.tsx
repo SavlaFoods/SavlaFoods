@@ -1,4 +1,4 @@
-import React, {useRef, useCallback} from 'react';
+import React, { useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -98,9 +98,9 @@ const ReportTable = ({
       const offsetX = event.nativeEvent.contentOffset.x;
 
       if (source === 'header' && contentScrollRef.current) {
-        contentScrollRef.current.scrollTo({x: offsetX, animated: false});
+        contentScrollRef.current.scrollTo({ x: offsetX, animated: false });
       } else if (source === 'content' && headerScrollRef.current) {
-        headerScrollRef.current.scrollTo({x: offsetX, animated: false});
+        headerScrollRef.current.scrollTo({ x: offsetX, animated: false });
       }
 
       // Reset isScrolling after a short delay to allow new scroll events
@@ -120,100 +120,114 @@ const ReportTable = ({
         showsHorizontalScrollIndicator={false}
         style={styles.headerScrollView}
         onScroll={event => handleHorizontalScroll(event, 'header')}
-        scrollEventThrottle={16}>
-        <View style={[styles.tableHeader, {backgroundColor: '#f8f8f8'}]}>
+        scrollEventThrottle={16}
+      >
+        <View style={[styles.tableHeader, { backgroundColor: '#f8f8f8' }]}>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.number, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.number, color: getThemeColor() },
+            ]}
+          >
             Sr.No
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.unit, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.unit, color: getThemeColor() },
+            ]}
+          >
             Unit
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.date, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.date, color: getThemeColor() },
+            ]}
+          >
             {isInward ? 'Inward Date' : 'Outward Date'}
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.inwardOutwardNo, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.inwardOutwardNo, color: getThemeColor() },
+            ]}
+          >
             {isInward ? 'Inward No' : 'Outward No'}
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.lotNo, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.lotNo, color: getThemeColor() },
+            ]}
+          >
             Lot No
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.itemName, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.itemName, color: getThemeColor() },
+            ]}
+          >
             Item Name
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.vakkalNo, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.vakkalNo, color: getThemeColor() },
+            ]}
+          >
             Vakkal No
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.itemMark, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.itemMark, color: getThemeColor() },
+            ]}
+          >
             Item Mark
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.qty, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.qty, color: getThemeColor() },
+            ]}
+          >
             {isInward ? 'Qty' : 'Order Qty'}
           </Text>
           {!isInward && (
             <Text
               style={[
                 styles.tableHeaderCell,
-                {width: columnWidths.dcQty, color: getThemeColor()},
-              ]}>
+                { width: columnWidths.dcQty, color: getThemeColor() },
+              ]}
+            >
               DC Qty
             </Text>
           )}
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.remark, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.remark, color: getThemeColor() },
+            ]}
+          >
             Remark
           </Text>
           <Text
             style={[
               styles.tableHeaderCell,
-              {width: columnWidths.vehicle, color: getThemeColor()},
-            ]}>
+              { width: columnWidths.vehicle, color: getThemeColor() },
+            ]}
+          >
             Vehicle
           </Text>
           {!isInward && (
             <Text
               style={[
                 styles.tableHeaderCell,
-                {width: columnWidths.deliveredTo, color: getThemeColor()},
-              ]}>
+                { width: columnWidths.deliveredTo, color: getThemeColor() },
+              ]}
+            >
               Delivered To
             </Text>
           )}
@@ -227,11 +241,13 @@ const ReportTable = ({
         showsHorizontalScrollIndicator={true}
         style={styles.contentScrollView}
         onScroll={event => handleHorizontalScroll(event, 'content')}
-        scrollEventThrottle={16}>
+        scrollEventThrottle={16}
+      >
         <ScrollView
           ref={tableRef}
           nestedScrollEnabled={true}
-          showsVerticalScrollIndicator={true}>
+          showsVerticalScrollIndicator={true}
+        >
           <View style={styles.tableWrapper}>
             {reportData.map((item, index) => (
               <View
@@ -246,14 +262,17 @@ const ReportTable = ({
                           : '#F0F7FF'
                         : '#FFFFFF',
                   },
-                ]}>
-                <Text style={[styles.tableCell, {width: columnWidths.number}]}>
+                ]}
+              >
+                <Text
+                  style={[styles.tableCell, { width: columnWidths.number }]}
+                >
                   {index + 1}
                 </Text>
-                <Text style={[styles.tableCell, {width: columnWidths.unit}]}>
+                <Text style={[styles.tableCell, { width: columnWidths.unit }]}>
                   {item.UNIT_NAME || '-'}
                 </Text>
-                <Text style={[styles.tableCell, {width: columnWidths.date}]}>
+                <Text style={[styles.tableCell, { width: columnWidths.date }]}>
                   {isInward
                     ? formatDate(item.GRN_DATE)
                     : formatDate(item.OUTWARD_DATE)}
@@ -262,12 +281,13 @@ const ReportTable = ({
                   <TouchableOpacity
                     style={[
                       styles.tableCellContainer,
-                      {width: columnWidths.inwardOutwardNo},
+                      { width: columnWidths.inwardOutwardNo },
                     ]}
                     onPress={() =>
                       onInwardOutwardNoPress && onInwardOutwardNoPress(item)
                     }
-                    disabled={!(onInwardOutwardNoPress && item.GRN_NO)}>
+                    disabled={!(onInwardOutwardNoPress && item.GRN_NO)}
+                  >
                     <Text
                       style={[
                         styles.tableCell,
@@ -279,7 +299,8 @@ const ReportTable = ({
                               : '#334155',
                           width: '100%',
                         },
-                      ]}>
+                      ]}
+                    >
                       {item.GRN_NO || '-'}
                     </Text>
                   </TouchableOpacity>
@@ -287,12 +308,13 @@ const ReportTable = ({
                   <TouchableOpacity
                     style={[
                       styles.tableCellContainer,
-                      {width: columnWidths.inwardOutwardNo},
+                      { width: columnWidths.inwardOutwardNo },
                     ]}
                     onPress={() =>
                       onInwardOutwardNoPress && onInwardOutwardNoPress(item)
                     }
-                    disabled={!(onInwardOutwardNoPress && item.OUTWARD_NO)}>
+                    disabled={!(onInwardOutwardNoPress && item.OUTWARD_NO)}
+                  >
                     <Text
                       style={[
                         styles.tableCell,
@@ -304,38 +326,50 @@ const ReportTable = ({
                               : '#334155',
                           width: '100%',
                         },
-                      ]}>
+                      ]}
+                    >
                       {item.OUTWARD_NO || '-'}
                     </Text>
                   </TouchableOpacity>
                 )}
-                <Text style={[styles.tableCell, {width: columnWidths.lotNo}]}>
+                <Text style={[styles.tableCell, { width: columnWidths.lotNo }]}>
                   {item.LOT_NO || '-'}
                 </Text>
                 <Text
-                  style={[styles.tableCell, {width: columnWidths.itemName}]}>
+                  style={[styles.tableCell, { width: columnWidths.itemName }]}
+                >
                   {item.ITEM_NAME || '-'}
                 </Text>
                 <Text
-                  style={[styles.tableCell, {width: columnWidths.vakkalNo}]}>
+                  style={[styles.tableCell, { width: columnWidths.vakkalNo }]}
+                >
                   {item.VAKKAL_NO || '-'}
                 </Text>
                 <Text
-                  style={[styles.tableCell, {width: columnWidths.itemMark}]}>
+                  style={[styles.tableCell, { width: columnWidths.itemMark }]}
+                >
                   {item.ITEM_MARK || '-'}
                 </Text>
-                <Text style={[styles.tableCell, {width: columnWidths.qty}]}>
-                  {item.QTY || item.ORDER_QUANTITY || '-'}
+                <Text style={[styles.tableCell, { width: columnWidths.qty }]}>
+                  {isInward
+                    ? item.QTY ?? '-'
+                    : item.ORDER_QUANTITY ?? item.QTY ?? '-'}
                 </Text>
                 {!isInward && (
-                  <Text style={[styles.tableCell, {width: columnWidths.dcQty}]}>
+                  <Text
+                    style={[styles.tableCell, { width: columnWidths.dcQty }]}
+                  >
                     {item.DC_QTY || '-'}
                   </Text>
                 )}
-                <Text style={[styles.tableCell, {width: columnWidths.remark}]}>
+                <Text
+                  style={[styles.tableCell, { width: columnWidths.remark }]}
+                >
                   {item.REMARK || '-'}
                 </Text>
-                <Text style={[styles.tableCell, {width: columnWidths.vehicle}]}>
+                <Text
+                  style={[styles.tableCell, { width: columnWidths.vehicle }]}
+                >
                   {item.VEHICLE_NO || '-'}
                 </Text>
                 {!isInward && (
@@ -343,8 +377,9 @@ const ReportTable = ({
                     style={[
                       styles.tableCell,
                       styles.deliveredToCell,
-                      {width: columnWidths.deliveredTo},
-                    ]}>
+                      { width: columnWidths.deliveredTo },
+                    ]}
+                  >
                     {item.DELIVERED_TO || '-'}
                   </Text>
                 )}

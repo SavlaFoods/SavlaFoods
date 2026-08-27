@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,16 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import axios from 'axios';
-import {API_ENDPOINTS} from '../config/api.config';
-import {RouteProp} from '@react-navigation/native';
-import {LayoutWrapper} from '../components/AppLayout';
+import RNFS from 'react-native-fs';
+import FileViewer from 'react-native-file-viewer';
+import { Buffer } from 'buffer';
+import { API_ENDPOINTS } from '../config/api.config';
+import { RouteProp } from '@react-navigation/native';
+import { LayoutWrapper } from '../components/AppLayout';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
 // Define types for the API response
@@ -48,7 +53,7 @@ interface RouteParams {
 }
 
 type GrnDetailsScreenRouteProp = RouteProp<
-  {GrnDetailsScreen: RouteParams},
+  { GrnDetailsScreen: RouteParams },
   'GrnDetailsScreen'
 >;
 
@@ -56,9 +61,9 @@ interface GrnDetailsProps {
   route: GrnDetailsScreenRouteProp;
 }
 
-const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
+const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({ route }) => {
   // Extract parameters from route
-  const {grnNo, customerId} = route.params || {};
+  const { grnNo, customerId } = route.params || {};
 
   // State for API data
   const [isLoading, setIsLoading] = useState(true);
@@ -73,6 +78,9 @@ const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
     BILL_MAKING: '',
   });
   const [grnDetails, setGrnDetails] = useState<GrnItemDetails[]>([]);
+
+  // State for PDF download
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Fetch data from API
   useEffect(() => {
@@ -195,6 +203,81 @@ const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
     return lines.join('\n');
   };
 
+  // Opens a downloaded PDF in the device's native PDF viewer
+  const openPdf = async (filePath: string) => {
+    try {
+      await FileViewer.open(filePath, {
+        showOpenWithDialog: true,
+        displayName: 'GRN PDF',
+      });
+    } catch (err) {
+      console.error('Error opening GRN PDF:', err);
+      Alert.alert(
+        'Unable to Open PDF',
+        (err as Error).message || 'No app found to open this PDF file.',
+      );
+    }
+  };
+
+  // Download & open the GRN details PDF
+  // Hits: {BASE_URL}/reports/GRNdetailsPDF/{grnNo}?customerId={customerId}
+  const handleDownloadPdf = async () => {
+    if (!grnNo) {
+      Alert.alert('Error', 'GRN Number is required to download the PDF');
+      return;
+    }
+
+    try {
+      setIsDownloadingPdf(true);
+
+      const pdfUrl = `${API_ENDPOINTS.GET_GRN_DETAILS_PDF}/${grnNo}?customerId=${customerId}`;
+      console.log('PDF Download URL:', pdfUrl);
+
+      const fileName = `GRN_${grnNo}.pdf`;
+      const downloadDest = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      // Remove any stale copy from a previous download so we always get the latest file
+      const exists = await RNFS.exists(downloadDest);
+      if (exists) {
+        await RNFS.unlink(downloadDest);
+      }
+
+      // IMPORTANT: use the same axios instance/interceptors as the rest of the app
+      // (not RNFS.downloadFile) so any auth header your app already attaches to
+      // requests is automatically sent here too. This is what fixes the 401 -
+      // RNFS.downloadFile is a native download that bypasses axios entirely and
+      // was hitting the API with no auth header at all.
+      const response = await axios.get(pdfUrl, {
+        responseType: 'arraybuffer',
+      });
+
+      const base64Data = Buffer.from(response.data).toString('base64');
+      await RNFS.writeFile(downloadDest, base64Data, 'base64');
+
+      // Show a popup once the download finishes: "OK" just dismisses it,
+      // "View PDF" opens the file in the device's native PDF viewer.
+      Alert.alert(
+        'Download Complete',
+        `${fileName} has been downloaded successfully.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          { text: 'View PDF', onPress: () => openPdf(downloadDest) },
+        ],
+        { cancelable: true },
+      );
+    } catch (err) {
+      console.error('Error downloading GRN PDF:', err);
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const message = status
+        ? `Download failed with status code ${status}`
+        : (err as Error).message ||
+          'Failed to download the PDF. Please try again.';
+      Alert.alert('Download Failed', message);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   const totals = calculateTotals();
 
   // Loading state
@@ -219,6 +302,31 @@ const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
   return (
     <LayoutWrapper showHeader={true} showTabBar={true} route={route}>
       <ScrollView style={styles.container}>
+        {/* Screen title + Download PDF action */}
+        <View style={styles.headerActionRow}>
+          <Text>
+            GRN No : <Text style={styles.screenTitle}>{grnNo}</Text>
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.downloadButton,
+              isDownloadingPdf && styles.downloadButtonDisabled,
+            ]}
+            onPress={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            activeOpacity={0.7}
+          >
+            {isDownloadingPdf ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialIcons name="picture-as-pdf" size={18} color="#fff" />
+            )}
+            <Text style={styles.downloadButtonText}>
+              {isDownloadingPdf ? 'Downloading...' : 'Download PDF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Header Details Section */}
         <View style={styles.detailsContainer}>
           <Text style={styles.sectionTitle}>GRN HEADER DETAILS</Text>
@@ -246,15 +354,16 @@ const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
         <View style={styles.detailsTableContainer}>
           <Text style={styles.sectionTitle}>GRN DETAILS</Text>
 
-          <View style={styles.scrollHintContainer}>
+          {/* <View style={styles.scrollHintContainer}>
             <MaterialIcons name="swipe" size={18} color="#64748B" />
             <Text
               style={styles.scrollHintText}
               numberOfLines={1}
-              ellipsizeMode="tail">
-              Scroll horizontally to view all data
+              ellipsizeMode="tail"
+            >
+              Scroll horizontally to view all datast
             </Text>
-          </View>
+          </View> */}
 
           {/* Custom Table Implementation */}
           <ScrollView horizontal showsHorizontalScrollIndicator={true}>
@@ -294,7 +403,8 @@ const GrnDetailsScreen: React.FC<GrnDetailsProps> = ({route}) => {
                   style={[
                     styles.tableRow,
                     index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                  ]}>
+                  ]}
+                >
                   <View style={styles.tableHeaderCell60}>
                     <Text style={styles.tableRowText}>{index + 1}</Text>
                   </View>
@@ -381,6 +491,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  headerActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  screenTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#F48221',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F48221',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    gap: 6,
+  },
+  downloadButtonDisabled: {
+    backgroundColor: '#F4A162',
+  },
+  downloadButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
+    marginLeft: 6,
+  },
   detailsContainer: {
     backgroundColor: '#fff',
     padding: 16,
@@ -388,7 +528,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     borderRadius: 5,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
@@ -433,7 +573,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderRadius: 5,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,

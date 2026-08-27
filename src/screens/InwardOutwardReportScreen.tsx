@@ -976,12 +976,19 @@ const InwardOutwardReportScreen = () => {
             normalizedItem.VAKKAL_NO = normalizedItem.VAKAL_NO;
           }
 
-          // Normalize Qty field
-          if (!normalizedItem.QTY) {
-            if (normalizedItem.QUANTITY) {
+          if (!isInward) {
+            // Outward: keep ORDER_QUANTITY (requested) and DC_QTY (dispatched) as distinct fields
+            normalizedItem.ORDER_QUANTITY =
+              normalizedItem.ORDER_QUANTITY ?? normalizedItem.QUANTITY ?? 0;
+            normalizedItem.DC_QTY = normalizedItem.DC_QTY ?? 0;
+
+            // Keep QTY as an alias of DC_QTY only for any legacy code/columns
+            // that still read QTY directly (does NOT overwrite ORDER_QUANTITY)
+            normalizedItem.QTY = normalizedItem.DC_QTY;
+          } else {
+            // Inward: unchanged behavior
+            if (!normalizedItem.QTY && normalizedItem.QUANTITY) {
               normalizedItem.QTY = normalizedItem.QUANTITY;
-            } else if (!isInward && normalizedItem.DC_QTY) {
-              normalizedItem.QTY = normalizedItem.DC_QTY;
             }
           }
 
@@ -2178,14 +2185,14 @@ const InwardOutwardReportScreen = () => {
               </View>
 
               {/* Scrolling Hint - only show when data is loaded and available */}
-              {!isReportLoading && localReportData.length > 0 && (
+              {/* {!isReportLoading && localReportData.length > 0 && (
                 <View style={styles.scrollHintContainer}>
                   <MaterialIcons name="swipe" size={18} color="#64748B" />
                   <Text style={styles.scrollHintText}>
                     Scroll horizontally to view all data
                   </Text>
                 </View>
-              )}
+              )} */}
 
               {/* Report Table Section - Pass the onInwardOutwardNoPress handler */}
               {isReportLoading ? (
@@ -2336,6 +2343,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 20,
     marginHorizontal: 20,
+    marginTop: Platform.OS === 'android' ? 0 : 0,
   },
   toggleButton: {
     width: 62,
@@ -2512,7 +2520,7 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 24,
+    marginTop: 10,
   },
   button: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,16 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import axios from 'axios';
-import {API_ENDPOINTS} from '../config/api.config';
-import {RouteProp} from '@react-navigation/native';
-import {LayoutWrapper} from '../components/AppLayout';
+import RNFS from 'react-native-fs';
+import FileViewer from 'react-native-file-viewer';
+import { Buffer } from 'buffer';
+import { API_ENDPOINTS } from '../config/api.config';
+import { RouteProp } from '@react-navigation/native';
+import { LayoutWrapper } from '../components/AppLayout';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
 // Define types for the API response
@@ -50,7 +55,7 @@ interface RouteParams {
 }
 
 type OutwardDetailsScreenRouteProp = RouteProp<
-  {OutwardDetailsScreen: RouteParams},
+  { OutwardDetailsScreen: RouteParams },
   'OutwardDetailsScreen'
 >;
 
@@ -58,9 +63,9 @@ interface OutwardDetailsProps {
   route: OutwardDetailsScreenRouteProp;
 }
 
-const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
+const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({ route }) => {
   // Extract parameters from route
-  const {outwardNo, customerId} = route.params || {};
+  const { outwardNo, customerId } = route.params || {};
 
   // State for API data
   const [isLoading, setIsLoading] = useState(true);
@@ -77,6 +82,9 @@ const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
     REMARKS: '',
   });
   const [dcDetails, setDcDetails] = useState<DcItemDetails[]>([]);
+
+  // State for PDF download
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Fetch data from API
   useEffect(() => {
@@ -201,6 +209,70 @@ const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
     return lines.join('\n');
   };
 
+  // Opens a downloaded PDF directly in the device's native PDF viewer
+  // (Quick Look on iOS, default PDF app on Android) - no extra menu/sheet
+  const openPdf = async (filePath: string) => {
+    try {
+      await FileViewer.open(filePath, {
+        showOpenWithDialog: false,
+      });
+    } catch (err) {
+      console.error('Error opening DC PDF:', err);
+      Alert.alert(
+        'Unable to Open PDF',
+        (err as Error).message || 'No app found to open this PDF file.',
+      );
+    }
+  };
+
+  // Download & open the DC (Delivery Challan) details PDF
+  // Hits: {BASE_URL}/lots/deliveryChallanDetailsPDF/{outwardNo}?customerId={customerId}
+  const handleDownloadPdf = async () => {
+    if (!outwardNo) {
+      Alert.alert('Error', 'Outward Number is required to download the PDF');
+      return;
+    }
+
+    try {
+      setIsDownloadingPdf(true);
+
+      const pdfUrl = `${API_ENDPOINTS.GET_DC_DETAILS_PDF}/${outwardNo}?customerId=${customerId}`;
+      console.log('PDF Download URL:', pdfUrl);
+
+      const fileName = `DC_${outwardNo}.pdf`;
+      const downloadDest = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      // Remove any stale copy from a previous download so we always get the latest file
+      const exists = await RNFS.exists(downloadDest);
+      if (exists) {
+        await RNFS.unlink(downloadDest);
+      }
+
+      // IMPORTANT: use the same axios instance/interceptors as the rest of the app
+      // (not RNFS.downloadFile) so any auth header your app already attaches to
+      // requests is automatically sent here too.
+      const response = await axios.get(pdfUrl, {
+        responseType: 'arraybuffer',
+      });
+
+      const base64Data = Buffer.from(response.data).toString('base64');
+      await RNFS.writeFile(downloadDest, base64Data, 'base64');
+
+      // Open the PDF directly once the download finishes
+      await openPdf(downloadDest);
+    } catch (err) {
+      console.error('Error downloading DC PDF:', err);
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const message = status
+        ? `Download failed with status code ${status}`
+        : (err as Error).message ||
+          'Failed to download the PDF. Please try again.';
+      Alert.alert('Download Failed', message);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   const totals = calculateTotals();
 
   // Loading state
@@ -225,6 +297,31 @@ const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
   return (
     <LayoutWrapper showHeader={true} showTabBar={true} route={route}>
       <ScrollView style={styles.container}>
+        {/* Screen title + Download PDF action */}
+        <View style={styles.headerActionRow}>
+          <Text>
+            Outward No : <Text style={styles.screenTitle}>{outwardNo}</Text>
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.downloadButton,
+              isDownloadingPdf && styles.downloadButtonDisabled,
+            ]}
+            onPress={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            activeOpacity={0.7}
+          >
+            {isDownloadingPdf ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialIcons name="picture-as-pdf" size={18} color="#fff" />
+            )}
+            <Text style={styles.downloadButtonText}>
+              {isDownloadingPdf ? 'Downloading...' : 'Download PDF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Header Details Section */}
         <View style={styles.detailsContainer}>
           <Text style={styles.sectionTitle}>DC HEADER DETAILS</Text>
@@ -260,16 +357,6 @@ const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
 
         <View style={styles.detailsTableContainer}>
           <Text style={styles.sectionTitle}>DC DETAILS</Text>
-
-          <View style={styles.scrollHintContainer}>
-            <MaterialIcons name="swipe" size={18} color="#64748B" />
-            <Text
-              style={styles.scrollHintText}
-              numberOfLines={1}
-              ellipsizeMode="tail">
-              Scroll horizontally to view all data
-            </Text>
-          </View>
 
           {/* Custom Table Implementation */}
           <ScrollView horizontal showsHorizontalScrollIndicator={true}>
@@ -309,7 +396,8 @@ const OutwardDetailsScreen: React.FC<OutwardDetailsProps> = ({route}) => {
                   style={[
                     styles.tableRow,
                     index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd,
-                  ]}>
+                  ]}
+                >
                   <View style={styles.tableHeaderCell60}>
                     <Text style={styles.tableRowText}>{index + 1}</Text>
                   </View>
@@ -396,6 +484,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  headerActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  screenTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4682B4',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4682B4',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    gap: 6,
+  },
+  downloadButtonDisabled: {
+    backgroundColor: '#7FA6C4',
+  },
+  downloadButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
+    marginLeft: 6,
+  },
   detailsContainer: {
     backgroundColor: '#fff',
     padding: 16,
@@ -403,7 +521,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     borderRadius: 5,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
@@ -448,7 +566,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderRadius: 5,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,

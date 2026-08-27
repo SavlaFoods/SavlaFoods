@@ -32,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({
   cartItemCount,
   onAccountSwitch,
   onCartPress,
-  appVersion = 'v1.7',
+  appVersion = 'v-test',
 }) => {
   const navigation = useNavigation<any>();
   const route = useRoute();
@@ -42,16 +42,13 @@ const Header: React.FC<HeaderProps> = ({
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Home'); // or your main screen
+      navigation.navigate('BottomTabNavigator', { screen: 'Home' }); // ✅ fixed
     }
   };
 
   const handleLogoPress = () => {
-    // OrdersHome is the actual screen name in OrdersStackNavigator
-    // Orders is the tab name
     if (route.name === 'Orders' || route.name === 'OrdersHome') {
-      // Navigate to HomeScreen when on Orders screens
-      navigation.navigate('Home');
+      navigation.navigate('BottomTabNavigator', { screen: 'Home' }); // ✅ fixed
     }
   };
 

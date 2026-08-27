@@ -697,6 +697,19 @@ const StockReportScreen: React.FC = () => {
   const handleSearch = async () => {
     setHasSearched(true);
     setErrorMessage(null);
+
+    // Mandatory field validation
+    const missingFields: string[] = [];
+    if (!fromDate) missingFields.push('From Date');
+    if (!toDate) missingFields.push('To Date');
+    if (unit.length === 0) missingFields.push('Unit');
+
+    if (missingFields.length > 0) {
+      const message = `Please select: ${missingFields.join(', ')}`;
+      setErrorMessage(message);
+      Alert.alert('Required Fields Missing', message);
+      return;
+    }
     // FIX 3: Clear data here (on explicit search action) instead of on toggle,
     // so the layout shift only happens intentionally when user taps Search.
     setStockData([]);
@@ -898,29 +911,18 @@ const StockReportScreen: React.FC = () => {
       Alert.alert('No Data', 'There is no data to download.');
       return;
     }
+    if (!fromDate || !toDate || unit.length === 0) {
+      Alert.alert(
+        'Required Fields Missing',
+        'From Date, To Date, and Unit are required.',
+      );
+      return;
+    }
 
     try {
       setIsPdfDownloading(true);
-      setPdfProgress(5);
-      setPdfStatusMessage('Preparing download...');
-
-      if (Platform.OS === 'android') {
-        setPdfProgress(10);
-        setPdfStatusMessage('Checking permissions...');
-        const hasPermission = await requestStoragePermission();
-        if (!hasPermission) {
-          Alert.alert(
-            'Permission Denied',
-            'Storage permission is required to download PDF reports.',
-            [{ text: 'OK' }],
-          );
-          setIsPdfDownloading(false);
-          return;
-        }
-      }
-
-      setPdfProgress(20);
-      setPdfStatusMessage('Preparing PDF request...');
+      setPdfProgress(10);
+      setPdfStatusMessage('Requesting report from server...');
 
       const pdfApiEndpoint = isZeroStock
         ? API_ENDPOINTS.GET_ZERO_STOCK_PDF_REPORT
@@ -938,195 +940,78 @@ const StockReportScreen: React.FC = () => {
         qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
       };
 
-      console.log(`Using PDF API endpoint: ${pdfApiEndpoint}`);
-      console.log('PDF Request payload:', JSON.stringify(payload, null, 2));
-
-      setPdfProgress(30);
-      setPdfStatusMessage('Requesting PDF from server...');
-
       const currentDate = new Date();
       const dateString = format(currentDate, 'yyyyMMdd_HHmmss');
       const reportType = isZeroStock ? 'ZeroStock' : 'Stock';
       const fileName = `${reportType}_Report_${dateString}.pdf`;
+      const url = `${pdfApiEndpoint}?customerId=${customerId}`;
+      const authHeaders = await getAuthHeaders();
 
-      let dirPath: string;
-      let filePath: string;
+      // App-private storage — no permission needed on any Android version.
+      const dirPath =
+        Platform.OS === 'ios'
+          ? RNBlobUtil.fs.dirs.DocumentDir
+          : RNBlobUtil.fs.dirs.CacheDir;
+      const finalFilePath = `${dirPath}/${fileName}`;
 
-      if (Platform.OS === 'ios') {
-        dirPath = RNBlobUtil.fs.dirs.DocumentDir;
-        filePath = `${dirPath}/${fileName}`;
-      } else {
-        dirPath = RNBlobUtil.fs.dirs.DownloadDir;
-
-        if ((Platform.Version as number) >= 29) {
-          console.log('Using app download directory for Android 10+:', dirPath);
-
-          if (dirPath.includes('Android/data')) {
-            const directPath = '/storage/emulated/0/Download';
-            try {
-              const directPathExists = await RNBlobUtil.fs.exists(directPath);
-              if (directPathExists) {
-                const testFile = `${directPath}/test-write-access.txt`;
-                try {
-                  await RNBlobUtil.fs.writeFile(testFile, 'test', 'utf8');
-                  await RNBlobUtil.fs.unlink(testFile);
-                  dirPath = directPath;
-                  console.log(
-                    'Successfully using external download directory:',
-                    dirPath,
-                  );
-                } catch (writeError) {
-                  console.log('External directory not writable:', writeError);
-                }
-              }
-            } catch (error) {
-              console.log('Using app-specific directory due to error:', error);
-            }
-          }
-        } else {
-          try {
-            const directPath = '/storage/emulated/0/Download';
-            const exists = await RNBlobUtil.fs.exists(directPath);
-
-            if (exists) {
-              const testFile = `${directPath}/test-write-access.txt`;
-              try {
-                await RNBlobUtil.fs.writeFile(testFile, 'test', 'utf8');
-                await RNBlobUtil.fs.unlink(testFile);
-                dirPath = directPath;
-                console.log('Using external download directory:', dirPath);
-              } catch (writeError) {
-                console.log('External directory not writable:', writeError);
-              }
-            } else {
-              console.log('Using app download directory:', dirPath);
-            }
-          } catch (error) {
-            console.log('Error checking external directory:', error);
-          }
-        }
-
-        filePath = `${dirPath}/${fileName}`;
+      // Clean up any stale file at this exact path before writing.
+      const staleExists = await RNBlobUtil.fs.exists(finalFilePath);
+      if (staleExists) {
+        await RNBlobUtil.fs.unlink(finalFilePath).catch(() => {});
       }
 
-      console.log('File will be saved to:', filePath);
-
-      setPdfProgress(45);
+      setPdfProgress(20);
       setPdfStatusMessage('Downloading PDF...');
 
-      const response = await axios({
-        url: `${pdfApiEndpoint}?customerId=${customerId}`,
-        method: 'POST',
-        data: payload,
-        responseType: 'arraybuffer',
-        headers: {
-          ...(await getAuthHeaders()),
+      // KEY FIX: specify `path` explicitly instead of `fileCache: true`.
+      // Letting RNBlobUtil auto-generate a cache path is what triggers the
+      // "Unexpected FileStorage response file: null" error on some devices.
+      const task = RNBlobUtil.config({
+        timeout: 60000,
+        path: finalFilePath,
+      }).fetch(
+        'POST',
+        url,
+        {
+          ...authHeaders,
+          'Content-Type': 'application/json',
           Accept: 'application/pdf',
         },
+        JSON.stringify(payload),
+      );
+
+      task.progress((received: number, total: number) => {
+        if (total > 0) {
+          const pct = 20 + Math.round((received / total) * 60); // 20–80%
+          setPdfProgress(pct);
+        } else {
+          setPdfStatusMessage('Server is generating the report...');
+        }
       });
 
-      setPdfProgress(60);
-      setPdfStatusMessage('Processing PDF data...');
+      const res = await task;
 
-      const data = new Uint8Array(response.data);
+      setPdfProgress(85);
+      setPdfStatusMessage('Verifying file...');
+
+      // Confirm the file actually exists at the path we told it to write to.
+      const fileExists = await RNBlobUtil.fs.exists(finalFilePath);
+      if (!fileExists) {
+        throw new Error('File was not written to storage.');
+      }
+
+      const base64Head = await RNBlobUtil.fs.readFile(finalFilePath, 'base64');
+      const headerBytes = Buffer.from(base64Head.slice(0, 12), 'base64');
       const isPdf =
-        data.length > 4 &&
-        data[0] === 0x25 && // %
-        data[1] === 0x50 && // P
-        data[2] === 0x44 && // D
-        data[3] === 0x46; // F
+        headerBytes.length >= 4 &&
+        headerBytes[0] === 0x25 &&
+        headerBytes[1] === 0x50 &&
+        headerBytes[2] === 0x44 &&
+        headerBytes[3] === 0x46;
 
       if (!isPdf) {
-        const textData = Buffer.from(response.data).toString('utf8');
-        console.error('Received non-PDF response:', textData);
-        throw new Error(
-          `Server returned non-PDF data: ${textData.substring(0, 100)}...`,
-        );
-      }
-
-      setPdfProgress(70);
-      setPdfStatusMessage('Saving PDF file...');
-
-      const pdfData = Buffer.from(response.data).toString('base64');
-
-      const dirExists = await RNBlobUtil.fs.exists(dirPath);
-      if (!dirExists) {
-        await RNBlobUtil.fs.mkdir(dirPath);
-      }
-
-      let finalFilePath = filePath;
-      const fileExists = await RNBlobUtil.fs.exists(filePath);
-      if (fileExists) {
-        const timestamp = new Date().getTime();
-        const newFileName = `${reportType}_Report_${dateString}_${timestamp}.pdf`;
-        finalFilePath = `${dirPath}/${newFileName}`;
-        console.log('File already exists, using unique filename:', newFileName);
-      }
-
-      setPdfProgress(80);
-      setPdfStatusMessage('Writing file to storage...');
-
-      await RNBlobUtil.fs.writeFile(finalFilePath, pdfData, 'base64');
-
-      const savedFileExists = await RNBlobUtil.fs.exists(finalFilePath);
-      if (!savedFileExists) {
-        throw new Error(`File could not be saved to ${finalFilePath}`);
-      }
-
-      setPdfProgress(90);
-      setPdfStatusMessage('Finalizing download...');
-
-      if (Platform.OS === 'android') {
-        try {
-          await RNBlobUtil.fs.scanFile([
-            { path: finalFilePath, mime: 'application/pdf' },
-          ]);
-          console.log('File scanned successfully');
-
-          const channelId = 'pdf-downloads-stock';
-
-          await notifee.createChannel({
-            id: channelId,
-            name: 'Stock PDF Downloads',
-            importance: AndroidImportance.HIGH,
-          });
-
-          const formattedFilePath = !finalFilePath.startsWith('file://')
-            ? `file://${finalFilePath}`
-            : finalFilePath;
-
-          await notifee.displayNotification({
-            title: `${reportType} Report Downloaded`,
-            body: `PDF saved to Downloads folder`,
-            android: {
-              channelId,
-              pressAction: {
-                id: 'view',
-              },
-              color: '#F48221',
-            },
-            data: {
-              filePath: formattedFilePath,
-            },
-          });
-
-          try {
-          } catch (notifError) {
-            console.error('Error showing notification:', notifError);
-            ToastAndroid.showWithGravity(
-              'PDF downloaded to Downloads folder',
-              ToastAndroid.LONG,
-              ToastAndroid.BOTTOM,
-            );
-          }
-        } catch (scanError) {
-          console.error('Error making file visible:', scanError);
-          ToastAndroid.showWithGravity(
-            'PDF saved but may not be visible in Downloads',
-            ToastAndroid.LONG,
-            ToastAndroid.BOTTOM,
-          );
-        }
+        await RNBlobUtil.fs.unlink(finalFilePath).catch(() => {});
+        throw new Error('Server returned non-PDF data.');
       }
 
       setPdfProgress(100);
@@ -1134,55 +1019,44 @@ const StockReportScreen: React.FC = () => {
 
       setTimeout(() => {
         setIsPdfDownloading(false);
-
-        const isPublicStorage = !finalFilePath.includes('Android/data');
-        Alert.alert(
-          'PDF Downloaded',
-          isPublicStorage
-            ? 'The report has been downloaded successfully to Downloads folder!'
-            : 'The report has been saved to app storage.',
-          [
-            {
-              text: 'View PDF',
-              onPress: () => {
-                try {
-                  const formattedPath =
-                    Platform.OS === 'android' &&
-                    !finalFilePath.startsWith('file://')
-                      ? `file://${finalFilePath}`
-                      : finalFilePath;
-
-                  setTimeout(() => {
-                    if (Platform.OS === 'ios') {
-                      RNBlobUtil.ios.openDocument(finalFilePath);
-                    } else {
-                      RNBlobUtil.android.actionViewIntent(
-                        finalFilePath,
-                        'application/pdf',
-                      );
-                    }
-                  }, 300);
-                } catch (viewError) {
-                  console.error('Error opening PDF:', viewError);
-                  Alert.alert(
-                    'Error',
-                    'Could not open the PDF file. The file was saved successfully, but there was an error opening it.',
-                  );
-                }
-              },
+        Alert.alert('PDF Ready', 'The report has been generated successfully', [
+          {
+            text: 'View PDF',
+            onPress: () => {
+              try {
+                setTimeout(() => {
+                  if (Platform.OS === 'ios') {
+                    RNBlobUtil.ios.openDocument(finalFilePath);
+                  } else {
+                    RNBlobUtil.android.actionViewIntent(
+                      finalFilePath,
+                      'application/pdf',
+                    );
+                  }
+                }, 300);
+              } catch (viewError) {
+                console.error('Error opening PDF:', viewError);
+                Alert.alert(
+                  'Error',
+                  'Could not open the PDF file. The file was saved, but there was an error opening it.',
+                );
+              }
             },
-            { text: 'OK', style: 'cancel' },
-          ],
-        );
+          },
+          { text: 'OK', style: 'cancel' },
+        ]);
       }, 500);
     } catch (error) {
       console.error('Error downloading PDF:', error);
-
       let errorMessage = 'Failed to download the PDF report.';
       if (error instanceof Error) {
-        errorMessage += ` Error: ${error.message}`;
+        if (error.message.includes('timeout')) {
+          errorMessage =
+            'The request timed out. The report may be too large, or the server is slow — please try again.';
+        } else {
+          errorMessage += ` Error: ${error.message}`;
+        }
       }
-
       Alert.alert('Download Error', errorMessage);
       setIsPdfDownloading(false);
     }
@@ -1415,7 +1289,10 @@ const StockReportScreen: React.FC = () => {
 
           <View style={styles.formRow}>
             <View style={styles.formColumn}>
-              <Text style={styles.label}>From Date</Text>
+              {/* <Text style={styles.label}>From Date</Text> */}
+              <Text style={styles.label}>
+                From Date <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
               <TouchableOpacity
                 style={styles.input}
                 activeOpacity={0.7}
@@ -1439,7 +1316,10 @@ const StockReportScreen: React.FC = () => {
             </View>
 
             <View style={styles.formColumn}>
-              <Text style={styles.label}>To Date</Text>
+              {/* <Text style={styles.label}>To Date</Text> */}
+              <Text style={styles.label}>
+                To Date <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
               <TouchableOpacity
                 style={styles.input}
                 activeOpacity={0.7}
@@ -1486,7 +1366,9 @@ const StockReportScreen: React.FC = () => {
             </View>
 
             <View style={styles.formColumn}>
-              <Text style={styles.label}>Unit</Text>
+              <Text style={styles.label}>
+                Unit <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
               <MultiSelect
                 options={unitOptions}
                 selectedValues={unit}
@@ -1611,7 +1493,7 @@ const StockReportScreen: React.FC = () => {
           )}
 
           {/* PDF Loading Overlay */}
-          {isPdfDownloading && (
+          {/* {isPdfDownloading && (
             <View style={styles.pdfLoadingOverlay}>
               <View style={styles.pdfLoadingCard}>
                 <Text style={styles.pdfLoadingText}>Generating PDF</Text>
@@ -1629,23 +1511,35 @@ const StockReportScreen: React.FC = () => {
                 <Text style={styles.progressText}>{pdfStatusMessage}</Text>
               </View>
             </View>
-          )}
+          )} */}
         </ScrollView>
       </TouchableWithoutFeedback>
 
-      {/*
-        Date Pickers
-        ─────────────────────────────────────────────────────────────────────
-        Android: DateTimePicker with display="default" renders as a fully
-        native system dialog. Wrapping it in a <Modal> causes a white blank
-        strip to appear over the calendar (the app Modal background bleeds
-        behind the native dialog). On Android we render the picker directly
-        with NO wrapper — the OS handles the dialog chrome entirely.
-
-        iOS: The picker uses display="spinner" which is an inline component,
-        so we still wrap it in our own Modal with Cancel/Confirm buttons.
-        ─────────────────────────────────────────────────────────────────────
-      */}
+      {/* PDF Loading Overlay — true full-screen modal, not tied to scroll position */}
+      <Modal
+        visible={isPdfDownloading}
+        transparent={true}
+        animationType="fade"
+        statusBarTranslucent={true}
+      >
+        <View style={styles.pdfLoadingOverlay}>
+          <View style={styles.pdfLoadingCard}>
+            <Text style={styles.pdfLoadingText}>Generating PDF</Text>
+            <View style={styles.progressBarContainer}>
+              <View
+                style={[
+                  styles.progressBar,
+                  {
+                    width: `${pdfProgress}%`,
+                    backgroundColor: '#F48221',
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressText}>{pdfStatusMessage}</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* FROM DATE — Android: bare picker, iOS: custom Modal */}
       {showFromDatePicker && Platform.OS === 'android' && (
@@ -1788,6 +1682,10 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
+  },
+  requiredAsterisk: {
+    color: '#DC2626',
+    fontWeight: 'bold',
   },
 
   // FIX 1: Disabled field style — visually distinct, not interactive

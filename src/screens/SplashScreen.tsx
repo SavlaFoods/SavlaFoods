@@ -7,6 +7,11 @@ import { migrateAllSecureKeys } from '../utils/migrationHelper';
 import { getSecureItem, removeSecureItem } from '../utils/secureStorage';
 import axios from 'axios';
 import { useAuthorization } from '../contexts/AuthorizationContext';
+import {
+  clearActivity,
+  hasSessionExpired,
+  recordActivity,
+} from '../utils/sessionTimeout';
 
 const SplashScreen: React.FC = () => {
   const navigation =
@@ -37,7 +42,7 @@ const SplashScreen: React.FC = () => {
         console.log('RAR EXISTS:', rar !== null);
         console.log('============================');
 
-        const hasValidSession = token !== null && rar !== null;
+        let hasValidSession = token !== null && rar !== null;
 
         if (hasValidSession) {
           console.log('Setting Authorization Header...');
@@ -45,6 +50,20 @@ const SplashScreen: React.FC = () => {
           console.log('Token set in axios defaults on app startup');
           await initializeAuthorization();
           console.log('Authorization initialized');
+          await recordActivity();
+        }
+        if (hasValidSession) {
+          const expired = await hasSessionExpired();
+          if (expired) {
+            await removeSecureItem('userToken');
+            await removeSecureItem('customerID');
+            await removeSecureItem('Disp_name');
+            await removeSecureItem('FK_CUST_GROUP_ID');
+            await removeSecureItem('RAR');
+            await clearActivity();
+            delete axios.defaults.headers.common['Authorization'];
+            hasValidSession = false;
+          }
         } else if (token) {
           // Stale/broken session: token exists but RAR was never saved.
           // Wipe it so we don't loop back into NoAccess.

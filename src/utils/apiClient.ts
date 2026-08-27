@@ -1,6 +1,6 @@
-import axios, {AxiosRequestConfig, AxiosResponse} from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import NetInfo from '@react-native-community/netinfo';
-import {API_BASE_URL, DEFAULT_HEADERS} from '../config/api.config';
+import { API_BASE_URL, DEFAULT_HEADERS } from '../config/api.config';
 import { getSecureItem } from './secureStorage';
 
 // Helper function to format token for better visibility
@@ -92,16 +92,16 @@ const apiRequest = async <T>(config: AxiosRequestConfig): Promise<T> => {
 
 export default {
   get: <T>(url: string, config?: AxiosRequestConfig) =>
-    apiRequest<T>({...config, method: 'get', url}),
+    apiRequest<T>({ ...config, method: 'get', url }),
 
   post: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
-    apiRequest<T>({...config, method: 'post', url, data}),
+    apiRequest<T>({ ...config, method: 'post', url, data }),
 
   put: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
-    apiRequest<T>({...config, method: 'put', url, data}),
+    apiRequest<T>({ ...config, method: 'put', url, data }),
 
   delete: <T>(url: string, config?: AxiosRequestConfig) =>
-    apiRequest<T>({...config, method: 'delete', url}),
+    apiRequest<T>({ ...config, method: 'delete', url }),
 
   // Raw axios instance in case you need direct access
   axiosInstance: apiClient,

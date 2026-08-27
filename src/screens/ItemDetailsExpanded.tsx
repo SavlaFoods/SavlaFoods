@@ -46,6 +46,9 @@ interface StockDetails {
   REMARKS: string | null;
   STATUS: string | null;
   UNIT_NAME: string | null;
+  REQUESTED_QTY: number | null; // ADD THIS
+  ORDER_COUNT: number | null; // ADD THIS
+  ORDER_NOS: string | null;
 }
 
 interface APIResponse {
@@ -368,6 +371,8 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
         false) ||
       (stock.QUANTITY?.toString().toLowerCase().includes(searchLower) ??
         false) ||
+      (stock.REQUESTED_QTY?.toString().toLowerCase().includes(searchLower) ??
+        false) ||
       (stock.EXPIRY_DATE?.toString().toLowerCase().includes(searchLower) ??
         false) ||
       (stock.STATUS?.toString().toLowerCase().includes(searchLower) ?? false) ||
@@ -496,6 +501,12 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                   </View>
                 </View>
                 <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Requested Qty:</Text>
+                    <Text style={styles.detailValue}>
+                      {formatQuantity(stock.REQUESTED_QTY)}
+                    </Text>
+                  </View>
                   {/* <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Available Quantity:</Text>
                     <Text style={styles.detailValue}>

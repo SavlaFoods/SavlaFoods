@@ -22,6 +22,7 @@ import {
   isScreenAuthorized as isScreenAuthorizedUtil,
   parseRARString,
 } from '../type/authorization';
+import { clearActivity } from '../utils/sessionTimeout';
 
 interface AuthorizationContextType {
   userAuthorization: UserAuthorization | null;
@@ -144,6 +145,7 @@ export const AuthorizationProvider: React.FC<AuthorizationProviderProps> = ({
 
   const clearAuthorization = async () => {
     await removeSecureItem('RAR');
+    await clearActivity();
     setUserAuthorizationState(null);
   };
 

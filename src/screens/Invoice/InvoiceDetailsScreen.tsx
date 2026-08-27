@@ -238,7 +238,7 @@ const InvoiceDetailsScreen: React.FC = () => {
         timeout: 30000,
       });
 
-      console.log('Invoice Details Response:', response.data);
+      console.log('Invoice Details Response:', response.data.invoiceData);
 
       if (response.data.success && response.data.invoiceData) {
         setInvoiceData(response.data.invoiceData);

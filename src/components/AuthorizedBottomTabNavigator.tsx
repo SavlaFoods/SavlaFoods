@@ -8,7 +8,7 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 
 // Base screens / stacks
 import HomeScreen from '../screens/HomeScreen';
-import AlertScreen from '../screens/AlertScreen';
+import AlertScreen from '../screens/Alert/AlertScreen';
 import {
   OrdersStackNavigator,
   FinanceStackNavigator,

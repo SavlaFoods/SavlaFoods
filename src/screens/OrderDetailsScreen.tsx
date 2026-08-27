@@ -9,6 +9,10 @@ import {
   Modal,
   Animated,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
+  Keyboard,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { RouteProp } from '@react-navigation/native';
@@ -124,12 +128,23 @@ const OrderDetailsScreen = ({
           setOrderItems(currentOrder.items || []);
           showToast('Order has been approved!', 'success');
           setTimeout(() => {
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'PendingOrdersScreen' }],
-              }),
-            );
+            navigation.dispatch(state => {
+              // Keep everything except the current OrderDetailsScreen,
+              // then push PendingOrdersScreen on top so there's history to go back to.
+              const routes = state.routes.filter(
+                r => r.name !== 'OrderDetailsScreen',
+              );
+              routes.push({
+                name: 'PendingOrdersScreen',
+                key: undefined,
+              } as any);
+
+              return CommonActions.reset({
+                ...state,
+                routes,
+                index: routes.length - 1,
+              });
+            });
           }, 1500);
         }
       } else {
@@ -176,12 +191,23 @@ const OrderDetailsScreen = ({
         if (updatedOrder.status === 'NEW') {
           showToast('Order has been approved!', 'success');
           setTimeout(() => {
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'PendingOrdersScreen' }],
-              }),
-            );
+            navigation.dispatch(state => {
+              // Keep everything except the current OrderDetailsScreen,
+              // then push PendingOrdersScreen on top so there's history to go back to.
+              const routes = state.routes.filter(
+                r => r.name !== 'OrderDetailsScreen',
+              );
+              routes.push({
+                name: 'PendingOrdersScreen',
+                key: undefined,
+              } as any);
+
+              return CommonActions.reset({
+                ...state,
+                routes,
+                index: routes.length - 1,
+              });
+            });
           }, 1500);
         }
       } else {
@@ -650,18 +676,24 @@ const OrderDetailsScreen = ({
                     <Text style={styles.quantityValueNew}>{item.QUANTITY}</Text>
                   </View>
                   <View style={styles.quantityDividerNew} />
-                  <View style={styles.quantityBox}>
-                    <Text style={styles.quantityLabelNew}>Net Qty</Text>
-                    <Text
-                      style={[
-                        styles.quantityValueNew,
-                        item.AVAILABLE_QTY < 0 && styles.negativeQuantity,
-                        item.AVAILABLE_QTY > 0 && styles.positiveQuantity,
-                      ]}
-                    >
-                      {item.AVAILABLE_QTY}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const netQty =
+                      (item.QUANTITY ?? 0) - (item.requestedQty ?? 0);
+                    return (
+                      <View style={styles.quantityBox}>
+                        <Text style={styles.quantityLabelNew}>Net Qty</Text>
+                        <Text
+                          style={[
+                            styles.quantityValueNew,
+                            netQty < 0 && styles.negativeQuantity,
+                            netQty > 0 && styles.positiveQuantity,
+                          ]}
+                        >
+                          {netQty}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                   <View style={styles.quantityDividerNew} />
                   <View style={styles.quantityBox}>
                     <Text style={styles.quantityLabelNew}>Ordered</Text>
@@ -688,48 +720,64 @@ const OrderDetailsScreen = ({
             </View>
           )}
         </ScrollView>
-
         <Modal
           animationType="fade"
           transparent={true}
           visible={modalVisible}
           onRequestClose={() => setModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <MaterialIcons name="error-outline" size={28} color="#ef4444" />
-                <Text style={styles.modalTitle}>Cancel Order</Text>
-              </View>
-              <View style={styles.modalBody}>
-                <Text style={styles.modalMessage}>
-                  Are you sure you want to cancel this order?
-                </Text>
-                <View style={styles.compactOrderContainer}>
+              <ScrollView
+                style={styles.modalScrollView}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                <View style={styles.modalHeader}>
                   <MaterialIcons
-                    name="shopping-bag"
-                    size={16}
-                    color="#0284C7"
+                    name="error-outline"
+                    size={28}
+                    color="#ef4444"
                   />
-                  <Text style={styles.compactOrderText}>
-                    Order No: #{order.orderNo}
-                  </Text>
+                  <Text style={styles.modalTitle}>Cancel Order</Text>
                 </View>
-                <View style={styles.cancelRemarkContainer}>
-                  <Text style={styles.cancelRemarkLabel}>
-                    Cancellation Remarks:
+                <View style={styles.modalBody}>
+                  <Text style={styles.modalMessage}>
+                    Are you sure you want to cancel this order?
                   </Text>
-                  <TextInput
-                    style={styles.cancelRemarkInput}
-                    value={cancelRemark}
-                    onChangeText={setCancelRemark}
-                    placeholder="Enter reason for cancellation"
-                    placeholderTextColor="#9ca3af"
-                    multiline={true}
-                    numberOfLines={2}
-                  />
+                  <View style={styles.compactOrderContainer}>
+                    <MaterialIcons
+                      name="shopping-bag"
+                      size={16}
+                      color="#0284C7"
+                    />
+                    <Text style={styles.compactOrderText}>
+                      Order No: #{order.orderNo}
+                    </Text>
+                  </View>
+                  <View style={styles.cancelRemarkContainer}>
+                    <Text style={styles.cancelRemarkLabel}>
+                      Cancellation Remarks:
+                    </Text>
+                    <TextInput
+                      style={styles.cancelRemarkInput}
+                      value={cancelRemark}
+                      onChangeText={setCancelRemark}
+                      placeholder="Enter reason for cancellation"
+                      placeholderTextColor="#9ca3af"
+                      multiline={true}
+                      numberOfLines={4}
+                      textAlignVertical="top"
+                      blurOnSubmit={false}
+                    />
+                  </View>
                 </View>
-              </View>
+              </ScrollView>
+
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.modalCancelButton}
@@ -744,10 +792,10 @@ const OrderDetailsScreen = ({
                       backgroundColor: cancelRemark.trim()
                         ? '#ef4444'
                         : '#fca5a5',
-                    }, // red if filled, light red if empty
+                    },
                   ]}
                   onPress={handleCancelOrder}
-                  disabled={!cancelRemark.trim() || isLoading} // disable if empty or loading
+                  disabled={!cancelRemark.trim() || isLoading}
                 >
                   <MaterialIcons name="delete" size={16} color="#fff" />
                   <Text style={styles.modalConfirmText}>
@@ -756,7 +804,7 @@ const OrderDetailsScreen = ({
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         <Modal
@@ -1099,26 +1147,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 8,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    width: '90%',
-    maxWidth: 400,
-    padding: 0,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
+
   modalHeader: {
     alignItems: 'center',
     padding: 12,
@@ -1350,6 +1379,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     textAlign: 'center',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '70%', // fixed, safely small enough to always fit above keyboard
+    padding: 0,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalScrollView: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
   },
 });
 

@@ -523,9 +523,10 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
       showToast('Customer ID must be a valid number.', 'error');
       return;
     }
-    if (orderItems.some(item => item.requestedQty > item.netQuantity)) {
+    // CHANGED: compare against original QUANTITY instead of netQuantity (available stock)
+    if (orderItems.some(item => item.requestedQty > item.QUANTITY)) {
       showToast(
-        'Requested quantity exceeds available stock for some items.',
+        'Requested quantity exceeds original ordered quantity for some items.',
         'error',
       );
       return;
@@ -558,6 +559,7 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
       setIsLoading(false);
     }
   };
+
   const submitOrderUpdate = async (deliveryDate: string) => {
     const combinedTransporterName = [
       transporterFields.name,

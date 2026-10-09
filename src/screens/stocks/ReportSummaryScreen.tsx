@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
   Alert,
-  Dimensions,
+  Modal,
+  FlatList,
 } from 'react-native';
 import axios from 'axios';
 import { format } from 'date-fns';
@@ -16,6 +16,17 @@ import { API_ENDPOINTS, getAuthHeaders } from '../../config/api.config';
 import { useRoute } from '@react-navigation/core';
 import { LayoutWrapper } from '../../components/AppLayout';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { getSecureOrAsyncItem } from '../../utils/migrationHelper';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+// Add / edit your units here (or replace with an API call if you have one).
+// `null` value = all units (unitName is sent as null).
+const UNIT_OPTIONS: { label: string; value: string | null }[] = [
+  { label: 'All Units', value: null },
+  { label: 'D-39', value: 'D-39' },
+  { label: 'D-514', value: 'D-514' },
+];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,14 +80,13 @@ interface ApiResponse {
 const ReportSummaryScreen: React.FC = () => {
   const route = useRoute();
 
-  // Date state — no more temp dates needed
-  const [fromDate, setFromDate] = useState<Date>(() => {
-    const today = new Date();
-    const lastMonth = new Date(today);
-    lastMonth.setMonth(today.getMonth() - 1);
-    return lastMonth;
-  });
-  const [toDate, setToDate] = useState<Date>(new Date());
+  // Dates — no default, user must select
+  const [fromDate, setFromDate] = useState<Date | null>(null);
+  const [toDate, setToDate] = useState<Date | null>(null);
+
+  // Unit selection
+  const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
+  const [showUnitDropdown, setShowUnitDropdown] = useState<boolean>(false);
 
   // Picker visibility
   const [showFromDatePicker, setShowFromDatePicker] = useState<boolean>(false);
@@ -96,35 +106,13 @@ const ReportSummaryScreen: React.FC = () => {
     unitName: null,
   });
   const [reportType, setReportType] = useState<'all' | 'itemwise'>('all');
-  const [tableHeight, setTableHeight] = useState<number>(550);
 
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // ─── Table Height ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const calculateTableHeight = () => {
-      const screenHeight = Dimensions.get('window').height;
-      const calculatedHeight = Math.min(Math.max(screenHeight * 0.6, 400), 650);
-      setTableHeight(calculatedHeight);
-    };
-
-    calculateTableHeight();
-
-    const dimensionsListener = Dimensions.addEventListener(
-      'change',
-      calculateTableHeight,
-    );
-
-    return () => {
-      dimensionsListener.remove();
-    };
-  }, []);
-
   // ─── Date Helpers ─────────────────────────────────────────────────────────
 
-  const formatDisplayDate = (date: Date): string => {
-    return format(date, 'dd/MM/yyyy');
+  const formatDisplayDate = (date: Date | null): string => {
+    return date ? format(date, 'dd/MM/yyyy') : 'Select date';
   };
 
   const formatApiDate = (date: Date): string => {
@@ -139,12 +127,27 @@ const ReportSummaryScreen: React.FC = () => {
   const handleFromDateConfirm = (date: Date) => {
     setFromDate(date);
     setShowFromDatePicker(false);
+    // If the existing "to" date is now before "from", clear it
+    if (toDate && date > toDate) {
+      setToDate(null);
+    }
   };
 
   const handleToDateConfirm = (date: Date) => {
     setToDate(date);
     setShowToDatePicker(false);
   };
+
+  // ─── Unit Handler ─────────────────────────────────────────────────────────
+
+  const handleUnitSelect = (unit: string | null) => {
+    setSelectedUnit(unit);
+    setShowUnitDropdown(false);
+    setSummaryData(null);
+  };
+
+  const selectedUnitLabel =
+    UNIT_OPTIONS.find(u => u.value === selectedUnit)?.label ?? 'Select unit';
 
   // ─── Number Formatter ─────────────────────────────────────────────────────
 
@@ -182,7 +185,11 @@ const ReportSummaryScreen: React.FC = () => {
     if (type !== reportType) {
       setReportType(type);
       setSummaryData(null);
-      handleApplyDates(type);
+      setError(null);
+      // Only auto-fetch if dates were already chosen
+      if (fromDate && toDate) {
+        handleApplyDates(type);
+      }
     }
   };
 
@@ -191,23 +198,48 @@ const ReportSummaryScreen: React.FC = () => {
   const handleApplyDates = async (typeOverride?: 'all' | 'itemwise') => {
     const currentType = typeOverride ?? reportType;
 
+    if (!fromDate || !toDate) {
+      Alert.alert('Select Dates', 'Please select both From and To dates.');
+      return;
+    }
+
+    if (fromDate > toDate) {
+      Alert.alert('Invalid Range', 'From date cannot be after To date.');
+      return;
+    }
+
     setSummaryData(null);
     setLoading(true);
     setError(null);
 
     try {
-      const fromDateStr = formatApiDate(fromDate);
-      const toDateStr = formatApiDate(toDate);
-
       const headers = await getAuthHeaders();
 
+      // Customer info comes from the logged-in session (secure storage),
+      // the same keys that the app-wide providers use.
+      const [storedCustomerId, storedCustomerName] = await Promise.all([
+        getSecureOrAsyncItem('customerID'),
+        getSecureOrAsyncItem('Disp_name'),
+      ]);
+
+      if (!storedCustomerId || !storedCustomerName) {
+        throw new Error(
+          'Customer details not found. Please log in again and retry.',
+        );
+      }
+
+      const customerIdNum = Number(storedCustomerId);
+
       const payload = {
-        fromDate: fromDateStr,
-        toDate: toDateStr,
-        customerName: 'UNICORP ENTERPRISES',
+        fromDate: formatApiDate(fromDate),
+        toDate: formatApiDate(toDate),
+        customerName: storedCustomerName,
+        customerID: Number.isNaN(customerIdNum)
+          ? storedCustomerId
+          : customerIdNum,
         itemCategoryName: null,
         itemSubCategoryName: null,
-        unitName: null,
+        unitName: selectedUnit, // null => all units
       };
 
       const apiEndpoint =
@@ -266,6 +298,22 @@ const ReportSummaryScreen: React.FC = () => {
       data && Array.isArray(data) && data.length > 0 && 'ITEM_NAME' in data[0]
     );
   };
+
+  // ─── Sorted item-wise data (A → Z by item name) ───────────────────────────
+
+  const sortedItemWiseData = useMemo<ItemWiseData[]>(() => {
+    if (!Array.isArray(summaryData)) {
+      return [];
+    }
+    return [...summaryData].sort((a, b) =>
+      (a.ITEM_NAME || '')
+        .trim()
+        .localeCompare((b.ITEM_NAME || '').trim(), undefined, {
+          sensitivity: 'base',
+          numeric: true,
+        }),
+    );
+  }, [summaryData]);
 
   // ─── Render Summary ───────────────────────────────────────────────────────
 
@@ -387,7 +435,7 @@ const ReportSummaryScreen: React.FC = () => {
       );
     }
 
-    const itemWiseData = summaryData;
+    const itemWiseData = sortedItemWiseData;
 
     if (itemWiseData.length === 0) {
       return (
@@ -401,21 +449,16 @@ const ReportSummaryScreen: React.FC = () => {
     }
 
     return (
-      <View style={styles.reportSection}>
+      <View style={[styles.reportSection, styles.itemWiseSection]}>
         <Text style={styles.sectionTitle}>
           Item-wise Summary ({itemWiseData.length} items)
         </Text>
-
-        {/* <View style={styles.minimumScrollHint}>
-          <Text style={styles.minimumScrollHintText}>
-            ⟷ Scroll horizontally to see more columns
-          </Text>
-        </View> */}
 
         <View style={styles.tableWrapper}>
           <ScrollView
             horizontal={true}
             showsHorizontalScrollIndicator={true}
+            style={{ flex: 1 }}
             contentContainerStyle={{ minWidth: 620 }}
           >
             <View style={styles.tableContainer}>
@@ -441,8 +484,9 @@ const ReportSummaryScreen: React.FC = () => {
               </View>
 
               {/* Rows */}
-              <View style={{ height: Math.min(tableHeight, 450) }}>
+              <View style={{ flex: 1 }}>
                 <ScrollView
+                  style={{ flex: 1 }}
                   nestedScrollEnabled={true}
                   showsVerticalScrollIndicator={true}
                   persistentScrollbar={true}
@@ -515,7 +559,11 @@ const ReportSummaryScreen: React.FC = () => {
               style={styles.datePicker}
               onPress={() => setShowFromDatePicker(true)}
             >
-              <Text style={styles.dateText}>{formatDisplayDate(fromDate)}</Text>
+              <Text
+                style={[styles.dateText, !fromDate && styles.placeholderText]}
+              >
+                {formatDisplayDate(fromDate)}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -525,18 +573,48 @@ const ReportSummaryScreen: React.FC = () => {
               style={styles.datePicker}
               onPress={() => setShowToDatePicker(true)}
             >
-              <Text style={styles.dateText}>{formatDisplayDate(toDate)}</Text>
+              <Text
+                style={[styles.dateText, !toDate && styles.placeholderText]}
+              >
+                {formatDisplayDate(toDate)}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Apply Button */}
-        <TouchableOpacity
-          style={styles.applyButton}
-          onPress={() => handleApplyDates()}
-        >
-          <Text style={styles.applyButtonText}>Apply Date Range</Text>
-        </TouchableOpacity>
+        {/* Unit Dropdown */}
+        <View style={styles.dateContainer}>
+          <View style={styles.dateField}>
+            <Text style={styles.dateLabel}>Unit:</Text>
+            <TouchableOpacity
+              style={styles.unitDropdown}
+              onPress={() => setShowUnitDropdown(true)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.unitDropdownText,
+                  selectedUnit === null && styles.placeholderText,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedUnit === null ? 'All Units' : selectedUnitLabel}
+              </Text>
+              <Text style={styles.dropdownArrow}>▼</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Apply Button — same size/column as the date fields */}
+          <View style={styles.dateField}>
+            <Text style={styles.dateLabel}> </Text>
+            <TouchableOpacity
+              style={styles.applyButton}
+              onPress={() => handleApplyDates()}
+            >
+              <Text style={styles.applyButtonText}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Report Type Toggle */}
         <View style={styles.radioContainer}>
@@ -613,29 +691,79 @@ const ReportSummaryScreen: React.FC = () => {
         )}
 
         {/* Report Content */}
-        {!loading && !error && (
+        {/* "All" report: page scrolls vertically */}
+        {!loading && !error && reportType === 'all' && (
           <ScrollView ref={scrollViewRef} style={styles.scrollContainer}>
-            {reportType === 'all' ? renderSummaryData() : renderItemWiseData()}
+            {renderSummaryData()}
           </ScrollView>
         )}
 
-        {/* ✅ From Date Picker — works on both iOS and Android */}
+        {/* Item-wise: NO outer vertical ScrollView — the table's own
+            vertical scroll handles rows, horizontal scroll handles columns */}
+        {!loading && !error && reportType === 'itemwise' && (
+          <View style={styles.scrollContainer}>{renderItemWiseData()}</View>
+        )}
+
+        {/* Unit dropdown modal */}
+        <Modal
+          visible={showUnitDropdown}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowUnitDropdown(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowUnitDropdown(false)}
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select Unit</Text>
+              <FlatList
+                data={UNIT_OPTIONS}
+                keyExtractor={item => String(item.value ?? 'all')}
+                renderItem={({ item }) => {
+                  const isSelected = item.value === selectedUnit;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.modalOption,
+                        isSelected && styles.modalOptionSelected,
+                      ]}
+                      onPress={() => handleUnitSelect(item.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalOptionText,
+                          isSelected && styles.modalOptionTextSelected,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* From Date Picker */}
         <DateTimePickerModal
           isVisible={showFromDatePicker}
           mode="date"
-          date={fromDate}
+          date={fromDate ?? new Date()}
           minimumDate={new Date(2020, 0, 1)}
-          maximumDate={new Date()}
+          maximumDate={toDate ?? new Date()}
           onConfirm={handleFromDateConfirm}
           onCancel={() => setShowFromDatePicker(false)}
         />
 
-        {/* ✅ To Date Picker — works on both iOS and Android */}
+        {/* To Date Picker */}
         <DateTimePickerModal
           isVisible={showToDatePicker}
           mode="date"
-          date={toDate}
-          minimumDate={new Date(2020, 0, 1)}
+          date={toDate ?? fromDate ?? new Date()}
+          minimumDate={fromDate ?? new Date(2020, 0, 1)}
           maximumDate={new Date()}
           onConfirm={handleToDateConfirm}
           onCancel={() => setShowToDatePicker(false)}
@@ -650,15 +778,15 @@ const ReportSummaryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 8,
     paddingHorizontal: 8,
     backgroundColor: '#fff',
   },
   titleContainer: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
     backgroundColor: '#f9f9f9',
-    paddingVertical: 10,
+    paddingVertical: 6,
     borderRadius: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#eaeaea',
@@ -669,26 +797,27 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   titleText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: '#F48221',
   },
   dateContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   dateField: {
     flex: 1,
     marginHorizontal: 4,
   },
   dateLabel: {
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: 13,
+    marginBottom: 2,
     color: '#666',
   },
   datePicker: {
-    padding: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     borderWidth: 1,
@@ -702,27 +831,112 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
+  placeholderText: {
+    color: '#999',
+    fontWeight: '400',
+  },
+  unitContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 4,
+    marginBottom: 8,
+  },
+  unitLabel: {
+    fontSize: 13,
+    color: '#666',
+    marginRight: 8,
+  },
+  unitDropdown: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  unitDropdownText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  dropdownArrow: {
+    fontSize: 9,
+    color: '#F48221',
+    marginLeft: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalContent: {
+    width: 200,
+    maxHeight: '40%',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 8,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F48221',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalOptionSelected: {
+    backgroundColor: '#FFF3E8',
+  },
+  modalOptionText: {
+    fontSize: 13,
+    color: '#333',
+  },
+  modalOptionTextSelected: {
+    color: '#F48221',
+    fontWeight: '600',
+  },
   applyButton: {
     backgroundColor: '#F48221',
-    paddingVertical: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: 8,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F48221',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   applyButtonText: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 14,
   },
   scrollContainer: {
     flex: 1,
   },
   reportSection: {
     backgroundColor: '#f9f9f9',
-    paddingVertical: 16,
+    paddingVertical: 10,
     paddingHorizontal: 6,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -779,13 +993,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 4,
   },
   radioButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 6,
     backgroundColor: '#fff',
@@ -807,7 +1021,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F48221',
   },
   radioLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
   },
   radioSelected: {
@@ -900,20 +1114,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 10,
     marginHorizontal: 0,
-    minHeight: 500,
     width: '100%',
   },
-  minimumScrollHint: {
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    backgroundColor: '#f8f8f8',
-    borderRadius: 4,
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  minimumScrollHintText: {
-    color: '#666',
-    fontSize: 11,
+  itemWiseSection: {
+    flex: 1,
+    marginBottom: 8,
   },
 });
 

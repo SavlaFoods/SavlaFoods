@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -45,6 +45,7 @@ import {
   useIsStockViewerOnly,
   useCanAddToCart,
 } from '../contexts/AuthorizationContext';
+import { consumeSearchFocus } from '../utils/searchFocus';
 
 interface HomeScreenParams {
   initialLogin?: boolean;
@@ -138,6 +139,42 @@ const HomeScreen: React.FC = () => {
   const { cartItems, clearCart } = useCart() || {};
   const cartItemCount = cartItems?.length || 0;
   const [refreshing, setRefreshing] = useState(false);
+
+  const [isNumericKeyboard, setIsNumericKeyboard] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
+
+  const [searchKey, setSearchKey] = useState(0);
+  const [autoFocusSearch, setAutoFocusSearch] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!consumeSearchFocus()) return;
+      console.log('HOME: focus requested');
+      setAutoFocusSearch(true);
+      setSearchKey(k => k + 1); // brand-new TextInput, so no stale focus state
+    }, []),
+  );
+
+  // backup in case autoFocus is swallowed during the screen transition
+  useEffect(() => {
+    if (searchKey === 0) return;
+    const t = setTimeout(() => {
+      if (!searchInputRef.current?.isFocused()) searchInputRef.current?.focus();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchKey]);
+
+  const toggleKeyboardType = () => {
+    setIsNumericKeyboard(prev => !prev);
+    // Re-focus so the keyboard reopens with the new type
+    searchInputRef.current?.blur();
+    setTimeout(() => searchInputRef.current?.focus(), 100);
+  };
+
+  const handleClearSearch = () => {
+    handleSearch(''); // clears query, search results and restores categories
+    searchInputRef.current?.focus();
+  };
 
   // Handle back button press to prevent navigation to login screen
 
@@ -360,6 +397,9 @@ const HomeScreen: React.FC = () => {
     return num.toLocaleString();
   };
 
+  const getNetQuantity = (item: SearchResultItem) =>
+    (Number(item.Quantity) || 0) - (Number(item.REQUESTED_QTY) || 0);
+
   const renderCardItem = useCallback(
     ({ item }: { item: CategoryItem }) => {
       return (
@@ -482,7 +522,7 @@ const HomeScreen: React.FC = () => {
                 <Text style={styles.detailValue}>{item.ITEM_MARKS || ''}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Quantity</Text>
+                <Text style={styles.detailLabel}>Balance Qty</Text>
                 <Text style={styles.detailValue}>
                   {formatQuantity(item.Quantity)}
                 </Text>
@@ -490,15 +530,24 @@ const HomeScreen: React.FC = () => {
             </View>
             <View style={styles.detailRow}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Requested Qty</Text>
+                <Text style={styles.detailLabel}>Ordered Qty</Text>
                 <Text style={styles.detailValue}>
                   {formatQuantity(item.REQUESTED_QTY)}
                 </Text>
               </View>
               <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Net Qty</Text>
+                <Text style={styles.detailValue}>
+                  {formatQuantity(getNetQuantity(item))}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.detailRow}>
+              <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Remarks</Text>
                 <Text style={styles.detailValue}>{item.REMARKS || ''}</Text>
               </View>
+              <View style={styles.detailItem} />
             </View>
           </View>
         </Animated.View>
@@ -619,22 +668,35 @@ const HomeScreen: React.FC = () => {
                 onPress={handleSearchSubmit}
               >
                 <TextInput
+                  ref={searchInputRef}
+                  key={searchKey}
                   style={styles.searchInput}
+                  autoFocus={autoFocusSearch}
                   placeholder="Search lot no, item marks, vakal no.."
                   placeholderTextColor={'#999'}
                   value={searchQuery}
                   onChangeText={handleSearch}
                   onSubmitEditing={handleSearchSubmit}
                   returnKeyType="search"
+                  keyboardType={isNumericKeyboard ? 'number-pad' : 'default'}
                   textAlignVertical="center"
                   numberOfLines={1}
                 />
+
                 {isSearching ? (
                   <ActivityIndicator
                     size="small"
                     color="#F48221"
                     style={styles.searchIcon}
                   />
+                ) : searchQuery.length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.searchIcon}
+                    onPress={handleClearSearch}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Icon name="close" size={22} color="#555" />
+                  </TouchableOpacity>
                 ) : (
                   <Icon
                     name="search"
@@ -965,6 +1027,14 @@ const styles = StyleSheet.create({
     color: '#777',
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  keyboardToggle: {
+    position: 'absolute',
+    right: 49,
+    width: 36,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

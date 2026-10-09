@@ -407,7 +407,8 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
           laborCharges: '',
         });
         setTransporterDetails({ name: '', vehicleNo: '', shopNo: '' });
-        setLaborCharges(buildInitialLaborCharges(orderItems));
+        setOrderBy('');
+        fetchLabourCharges(); // replaces buildInitialLaborCharges(orderItems)
         setIsOrderPlaced(false);
         setSuccessData({
           ordersByUnit: [],
@@ -421,7 +422,7 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
       }
     });
     return unsubscribe;
-  }, [navigation, isOrderPlaced, formattedToday]);
+  }, [navigation, isOrderPlaced, formattedToday, fetchLabourCharges]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -694,9 +695,9 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
   const handleTransporterNameChange = (text: string) => {
     setTransporterDetails(prev => ({ ...prev, name: text }));
     setTransporterNameError('');
-    if (!/^[a-zA-Z\s.',-]*$/.test(text)) {
+    if (!/^[a-zA-Z0-9\s.',-]*$/.test(text)) {
       setTransporterNameError(
-        'Only letters, spaces, and common punctuation allowed',
+        'Only letters, numbers, spaces, and common punctuation allowed',
       );
     }
   };
@@ -746,9 +747,9 @@ const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = ({
     if (!transporterDetails.name.trim()) {
       setTransporterNameError('Transporter Name is required');
       hasError = true;
-    } else if (!/^[a-zA-Z\s.',-]*$/.test(transporterDetails.name)) {
+    } else if (!/^[a-zA-Z0-9\s.',-]*$/.test(transporterDetails.name)) {
       setTransporterNameError(
-        'Only letters, spaces, and common punctuation allowed',
+        'Only letters, numbers, spaces, and common punctuation allowed',
       );
       hasError = true;
     }

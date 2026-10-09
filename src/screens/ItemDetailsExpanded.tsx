@@ -357,6 +357,9 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
     return quantity.toLocaleString();
   };
 
+  const getNetQuantity = (stock: StockDetails) =>
+    (stock.QUANTITY ?? 0) - (stock.REQUESTED_QTY ?? 0);
+
   const filteredStockDetails = stockDetails.filter(stock => {
     const searchLower = searchQuery.toLowerCase();
     return (
@@ -494,7 +497,7 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                     </Text>
                   </View> */}
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Quantity:</Text>
+                    <Text style={styles.detailLabel}>Balance Qty:</Text>
                     <Text style={styles.detailValue}>
                       {formatQuantity(stock.QUANTITY)}
                     </Text>
@@ -502,7 +505,7 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                 </View>
                 <View style={styles.detailRow}>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Requested Qty:</Text>
+                    <Text style={styles.detailLabel}>Ordered Qty:</Text>
                     <Text style={styles.detailValue}>
                       {formatQuantity(stock.REQUESTED_QTY)}
                     </Text>
@@ -514,11 +517,21 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                     </Text>
                   </View> */}
                   <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Net Qty:</Text>
+                    <Text style={styles.detailValue}>
+                      {formatQuantity(getNetQuantity(stock))}
+                    </Text>
+                  </View>
+                </View>
+                {/* NEW ROW */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Remarks:</Text>
                     <Text style={styles.detailValue}>
                       {stock.REMARKS || ''}
                     </Text>
                   </View>
+                  <View style={styles.detailItem} />
                 </View>
               </View>
             </Animated.View>
@@ -560,7 +573,14 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                 Batch No
               </Text>
               <Text style={[styles.tableHeaderCell, { width: 150 }]}>
-                Quantity
+                Balance Qty
+              </Text>
+              <Text style={[styles.tableHeaderCell, { width: 150 }]}>
+                Ordered Qty
+              </Text>
+
+              <Text style={[styles.tableHeaderCell, { width: 120 }]}>
+                Net Qty
               </Text>
               <Text style={[styles.tableHeaderCell, { width: 100 }]}>
                 Remarks
@@ -631,6 +651,19 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
                         {formatQuantity(stock.QUANTITY)}
                       </Text>
                     </View>
+
+                    <View style={[styles.tableCellContainer, { width: 120 }]}>
+                      <Text style={styles.tableCell}>
+                        {formatQuantity(stock.REQUESTED_QTY)}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.tableCellContainer, { width: 120 }]}>
+                      <Text style={styles.tableCell}>
+                        {formatQuantity(getNetQuantity(stock))}
+                      </Text>
+                    </View>
+
                     <View style={[styles.tableCellContainer, { width: 100 }]}>
                       <Text style={styles.tableCell}>
                         {stock.REMARKS || 'N/A'}

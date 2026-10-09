@@ -7,7 +7,7 @@ const YOUR_COMPUTER_IP = '202.189.234.140';
 // const YOUR_COMPUTER_IP = '192.168.1.37';
 const PORT = '5000';
 
-export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf`;
+export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf/v1`;
 // export const BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}`;
 
 export const API_ENDPOINTS = {
@@ -51,6 +51,7 @@ export const API_ENDPOINTS = {
   GET_STOCK_REPORT: `${API_BASE_URL}/stocks/getStockReport`,
   GET_STOCK_ITEMWISE: `${API_BASE_URL}/stocks/getItemWiseSummary`,
   GET_STOCK_CATEGORYWISE: `${API_BASE_URL}/stocks/getCategoryWiseSummary`,
+  GET_STOCK_CATEGORY_SUB_AVAILABILITY: `${API_BASE_URL}/stocks/StockCategorySubAvailability`,
 
   //LotReport
   GET_LOT_REPORT: `${API_BASE_URL}/lots/getLotReport`,

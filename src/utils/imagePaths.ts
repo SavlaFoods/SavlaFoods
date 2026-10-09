@@ -60,6 +60,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC45: require('../assets/images/subcategories/SC45.jpg'),
   SC46: require('../assets/images/subcategories/SC46.jpg'),
   SC47: require('../assets/images/subcategories/SC47.jpg'),
+  //
   SC49: require('../assets/images/subcategories/SC49.jpg'),
   SC50: require('../assets/images/subcategories/SC50.jpg'),
   SC51: require('../assets/images/subcategories/SC51.jpg'),
@@ -103,6 +104,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC89: require('../assets/images/subcategories/SC89.jpg'),
   SC90: require('../assets/images/subcategories/SC90.jpg'),
   SC91: require('../assets/images/subcategories/SC91.jpg'),
+  //
   SC94: require('../assets/images/subcategories/SC94.jpg'),
   SC95: require('../assets/images/subcategories/SC95.jpg'),
   SC96: require('../assets/images/subcategories/SC96.jpg'),
@@ -134,6 +136,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC122: require('../assets/images/subcategories/SC122.jpg'),
   SC123: require('../assets/images/subcategories/SC123.jpg'),
   SC124: require('../assets/images/subcategories/SC124.jpg'),
+  //
   SC126: require('../assets/images/subcategories/SC126.jpg'),
   SC127: require('../assets/images/subcategories/SC127.jpg'),
   SC128: require('../assets/images/subcategories/SC128.jpg'),
@@ -206,7 +209,9 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC196: require('../assets/images/subcategories/SC196.jpg'),
   SC197: require('../assets/images/subcategories/SC197.jpg'),
   SC198: require('../assets/images/subcategories/SC198.jpg'),
+  //
   SC200: require('../assets/images/subcategories/SC200.jpg'),
+  //
   SC202: require('../assets/images/subcategories/SC202.jpg'),
   SC203: require('../assets/images/subcategories/SC203.jpg'),
   SC204: require('../assets/images/subcategories/SC204.jpg'),
@@ -223,7 +228,9 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC216: require('../assets/images/subcategories/SC216.jpg'),
   SC217: require('../assets/images/subcategories/SC217.jpg'),
   SC218: require('../assets/images/subcategories/SC218.jpg'),
+  //
   SC220: require('../assets/images/subcategories/SC220.jpg'),
+  //
   SC222: require('../assets/images/subcategories/SC222.jpg'),
   SC223: require('../assets/images/subcategories/SC223.jpg'),
   SC224: require('../assets/images/subcategories/SC224.jpg'),
@@ -239,7 +246,9 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC234: require('../assets/images/subcategories/SC234.jpg'),
   SC236: require('../assets/images/subcategories/SC236.jpg'),
   SC237: require('../assets/images/subcategories/SC237.jpg'),
+  //
   SC239: require('../assets/images/subcategories/SC239.jpg'),
+  //
   SC241: require('../assets/images/subcategories/SC241.jpg'),
   SC242: require('../assets/images/subcategories/SC242.jpg'),
   SC243: require('../assets/images/subcategories/SC243.jpg'),
@@ -247,6 +256,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC245: require('../assets/images/subcategories/SC245.jpg'),
   SC246: require('../assets/images/subcategories/SC246.jpg'),
   SC247: require('../assets/images/subcategories/SC247.jpg'),
+  //
   SC249: require('../assets/images/subcategories/SC249.jpg'),
   SC250: require('../assets/images/subcategories/SC250.jpg'),
   SC251: require('../assets/images/subcategories/SC251.jpg'),
@@ -258,6 +268,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC257: require('../assets/images/subcategories/SC257.jpg'),
   SC258: require('../assets/images/subcategories/SC258.jpg'),
   SC259: require('../assets/images/subcategories/SC259.jpg'),
+  //
   SC261: require('../assets/images/subcategories/SC261.jpg'),
   SC262: require('../assets/images/subcategories/SC262.jpg'),
   SC263: require('../assets/images/subcategories/SC263.jpg'),
@@ -292,6 +303,7 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC292: require('../assets/images/subcategories/SC292.jpg'),
   SC293: require('../assets/images/subcategories/SC293.jpg'),
   SC294: require('../assets/images/subcategories/SC294.jpg'),
+  //
   SC296: require('../assets/images/subcategories/SC296.jpg'),
   SC297: require('../assets/images/subcategories/SC297.jpg'),
   SC298: require('../assets/images/subcategories/SC298.jpg'),
@@ -317,13 +329,16 @@ export const SUBCATEGORY_IMAGE_PATHS = {
   SC318: require('../assets/images/subcategories/SC318.jpg'),
   SC319: require('../assets/images/subcategories/SC319.jpg'),
   SC320: require('../assets/images/subcategories/SC320.jpg'),
+  //
   SC322: require('../assets/images/subcategories/SC322.jpg'),
   SC323: require('../assets/images/subcategories/SC323.jpg'),
   SC324: require('../assets/images/subcategories/SC324.jpg'),
   SC325: require('../assets/images/subcategories/SC325.jpg'),
   SC326: require('../assets/images/subcategories/SC326.jpg'),
+  //
   SC328: require('../assets/images/subcategories/SC328.jpg'),
   SC329: require('../assets/images/subcategories/SC329.jpg'),
   SC330: require('../assets/images/subcategories/SC330.jpg'),
+  //
   SC332: require('../assets/images/subcategories/SC332.jpg'),
 };

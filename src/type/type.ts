@@ -1,4 +1,4 @@
-import type {StackScreenProps} from '@react-navigation/stack';
+import type { StackScreenProps } from '@react-navigation/stack';
 // import { OrderContext } from '../contexts/orderContext';
 
 export interface Item {
@@ -54,6 +54,7 @@ export type RootStackParamList = {
     initialLogin?: boolean;
     customerID?: string;
     displayName?: string;
+    focusSearch?: boolean;
   };
   LotReportScreen: {
     lotNo?: string;
@@ -294,7 +295,7 @@ export type MainStackParamList = {
     };
   };
   CartScreen: undefined;
-  LotReportScreen: {lotNo?: string; itemId?: string; customerID?: string};
+  LotReportScreen: { lotNo?: string; itemId?: string; customerID?: string };
 };
 
 export type MainStackScreenProps<T extends keyof MainStackParamList> =

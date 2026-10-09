@@ -32,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({
   cartItemCount,
   onAccountSwitch,
   onCartPress,
-  appVersion = 'v-test',
+  appVersion = 'v-live-test',
 }) => {
   const navigation = useNavigation<any>();
   const route = useRoute();

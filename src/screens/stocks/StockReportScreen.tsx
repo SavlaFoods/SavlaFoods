@@ -156,17 +156,13 @@ interface StockReportResponse {
   data: StockReportItem[];
 }
 
+// Matches the StockCategorySubAvailability API response (allSubCategories[])
 interface SubCategoryItem {
-  CATID: string | number;
-  CATCODE: string;
-  CATDESC: string;
-  SUBCATID: string | number;
-  SUBCATCODE: string;
-  SUBCATDESC: string;
-  CATEGORY_IMAGE_NAME?: string;
-  SUBCATEGORY_IMAGE_NAME?: string;
-  available: boolean; // Added available property
-  name: string; // Added name property
+  id: string | number;
+  name: string;
+  categoryId?: string | number;
+  categoryName?: string;
+  available: boolean;
 }
 
 interface ErrorResponse {
@@ -241,14 +237,13 @@ const StockReportScreen: React.FC = () => {
   const [itemSubCategory, setItemSubCategory] = useState<string[]>([]);
   const [itemMarks, setItemMarks] = useState('');
   const [unit, setUnit] = useState<string[]>([]);
-  const [fromDate, setFromDate] = useState<Date | null>(null);
-  const [toDate, setToDate] = useState<Date | null>(null);
-  const [tempFromDate, setTempFromDate] = useState<Date>(new Date());
-  const [tempToDate, setTempToDate] = useState<Date>(new Date());
-  const [showFromDatePicker, setShowFromDatePicker] = useState<boolean>(false);
-  const [showToDatePicker, setShowToDatePicker] = useState<boolean>(false);
-  const [isFromDateSelected, setIsFromDateSelected] = useState<boolean>(false);
-  const [isToDateSelected, setIsToDateSelected] = useState<boolean>(false);
+
+  // As On Date (replaces From Date / To Date)
+  const [asOnDate, setAsOnDate] = useState<Date | null>(null);
+  const [tempAsOnDate, setTempAsOnDate] = useState<Date>(new Date());
+  const [showAsOnDatePicker, setShowAsOnDatePicker] = useState<boolean>(false);
+  const [isAsOnDateSelected, setIsAsOnDateSelected] = useState<boolean>(false);
+
   const [qtyLessThan, setQtyLessThan] = useState('');
   const [isScrollingToResults, setIsScrollingToResults] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -293,6 +288,18 @@ const StockReportScreen: React.FC = () => {
     return format(date, 'dd/MM/yyyy');
   };
 
+  // Convert an API date string (YYYY-MM-DD or ISO with time) to DD/MM/YYYY.
+  const formatTableDate = (value: string | null | undefined): string => {
+    if (!value) {
+      return '-';
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    if (match) {
+      return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+    return value;
+  };
+
   // Format dates for API
   const formatApiDate = (date: Date | null): string | null => {
     if (!date) {
@@ -335,18 +342,6 @@ const StockReportScreen: React.FC = () => {
     setUnit(values);
   };
 
-  const logAndSetFromDate = (date: Date) => {
-    console.log('From Date changed:', date);
-    setFromDate(date);
-    setIsFromDateSelected(true);
-  };
-
-  const logAndSetToDate = (date: Date) => {
-    console.log('To Date changed:', date);
-    setToDate(date);
-    setIsToDateSelected(true);
-  };
-
   const logAndSetQtyLessThan = (value: string) => {
     console.log('Qty Less Than changed:', value);
     setQtyLessThan(value);
@@ -372,13 +367,13 @@ const StockReportScreen: React.FC = () => {
     }
   }, [stockData]);
 
-  // Called explicitly when dates are confirmed or Zero Stock is toggled.
+  // Called explicitly when As On Date is confirmed or Zero Stock is toggled.
   // NOT a useEffect — avoids accidental re-triggers from search/re-renders.
-  const fetchSubCategories = async (
-    from: string,
-    to: string,
-    zeroStock: boolean,
-  ) => {
+  //
+  // Normal mode  -> StockCategorySubAvailability API (returns allSubCategories
+  //                 with `available` true/false as on the selected date).
+  // Zero stock   -> existing GET_ZERO_CATEGORIES endpoint, now sent asOnDate.
+  const fetchSubCategories = async (asOn: string, zeroStock: boolean) => {
     const requestId = ++subCategoryFetchId.current; // mark this call as "latest"
     try {
       setSubCategoryLoading(true);
@@ -394,26 +389,25 @@ const StockReportScreen: React.FC = () => {
 
       const endpoint = zeroStock
         ? API_ENDPOINTS.GET_ZERO_CATEGORIES
-        : API_ENDPOINTS.GET_STOCK_CATEGORIES;
+        : `${API_ENDPOINTS.GET_STOCK_CATEGORY_SUB_AVAILABILITY}?customerId=${id}`;
 
       const payload = {
         customerID: Number(id),
         customerName: name,
         lotNo: null,
-        vakalNo: null, // was "vakaNo" — typo, fix to match backend field
+        vakalNo: null,
         itemSubCategory: null,
         itemMarks: null,
         unit: null,
-        fromDate: from,
-        toDate: to,
+        asOnDate: asOn,
         qtyLessThan: null,
       };
 
       console.log('========== SUBCATEGORY API START ==========');
-      console.log('From Date:', from);
-      console.log('To Date:', to);
+      console.log('As On Date:', asOn);
       console.log('Zero Stock:', zeroStock);
       console.log('API Endpoint:', endpoint);
+      console.log('Request payload:', JSON.stringify(payload));
       console.log('Request Time:', new Date().toISOString());
 
       const startTime = Date.now();
@@ -432,13 +426,13 @@ const StockReportScreen: React.FC = () => {
       const list =
         response.data?.allSubCategories ??
         response.data?.data?.allSubCategories;
-      // inside fetchSubCategories, replace the list-handling block with:
+
       if (Array.isArray(list)) {
-        console.log('[SubCategory API] Raw item sample:', list[0]); // <-- TEMP: confirm real field names
         const mapped: SubCategoryItem[] = list.map((raw: any) => ({
           ...raw,
+          id: raw.id ?? raw.SUBCATID ?? '',
           name: raw.name ?? raw.SUBCATDESC ?? raw.CATDESC ?? '',
-          available: raw.available ?? true, // no availability field seen in payload — adjust if API sends one
+          available: raw.available ?? true,
         }));
         console.log(
           '[SubCategory API] Mapped count:',
@@ -455,14 +449,12 @@ const StockReportScreen: React.FC = () => {
       console.log('========== SUBCATEGORY API ERROR ==========');
 
       if (error.code === 'ECONNABORTED') {
-        console.log('API TIMEOUT (>15 sec)');
+        console.log('API TIMEOUT');
       }
 
       console.log('Error Message:', error.message);
       console.log('Error Code:', error.code);
       console.log('Error Response:', error.response?.data);
-
-      setSubCategories([]);
 
       if (requestId === subCategoryFetchId.current) setSubCategories([]);
       console.error('[SubCategory API] Error:', error);
@@ -501,10 +493,10 @@ const StockReportScreen: React.FC = () => {
     { label: displayName, value: displayName },
   ];
 
-  const datesSelected = !!fromDate && !!toDate;
+  const dateSelected = !!asOnDate;
 
-  // replace the itemSubCategoryOptions derivation:
-  const itemSubCategoryOptions = datesSelected
+  // Sub category options come from the availability API; unavailable ones are disabled
+  const itemSubCategoryOptions = dateSelected
     ? subCategories
         .slice()
         .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
@@ -515,7 +507,7 @@ const StockReportScreen: React.FC = () => {
         }))
     : [];
 
-  if (datesSelected) {
+  if (dateSelected) {
     console.log(
       '[SubCategoryOptions] built',
       itemSubCategoryOptions.length,
@@ -529,22 +521,18 @@ const StockReportScreen: React.FC = () => {
     { label: 'D-514', value: 'D-514' },
   ];
 
-  // FIX 3: Toggle Zero Stock without immediately clearing stockData/allStockData
+  // Toggle Zero Stock without immediately clearing stockData/allStockData
   // to prevent the brief UI layout shift. Data is cleared only when a new search
   // is actually executed (inside handleSearch).
   const toggleZeroStock = () => {
-    setIsZeroStock(previousState => {
-      const newState = !previousState;
-      console.log('Zero Stock toggled:', newState);
-      setItemSubCategory([]);
-      // Re-fetch subcategories with the new toggle state if dates are ready
-      if (fromDate && toDate) {
-        const from = formatApiDate(fromDate)!;
-        const to = formatApiDate(toDate)!;
-        fetchSubCategories(from, to, newState);
-      }
-      return newState;
-    });
+    const newState = !isZeroStock;
+    console.log('Zero Stock toggled:', newState);
+    setIsZeroStock(newState);
+    setItemSubCategory([]);
+    // Re-fetch subcategories with the new toggle state if the date is ready
+    if (asOnDate) {
+      fetchSubCategories(formatApiDate(asOnDate)!, newState);
+    }
   };
 
   // Update current page data for pagination
@@ -671,27 +659,18 @@ const StockReportScreen: React.FC = () => {
     );
   };
 
-  // // Updated useEffect to scroll to results when data loads
-  // useEffect(() => {
-  //   if (stockData.length > 0 && !isLoading) {
-  //     setTimeout(() => {
-  //       if (resultsRef.current && scrollViewRef.current) {
-  //         resultsRef.current.measureLayout(
-  //           scrollViewRef.current.getScrollableNode(),
-  //           (x, y) => {
-  //             scrollViewRef.current?.scrollTo({
-  //               y: y + 20,
-  //               animated: true,
-  //             });
-  //           },
-  //           () => {
-  //             scrollViewRef.current?.scrollToEnd({ animated: true });
-  //           },
-  //         );
-  //       }
-  //     }, 300);
-  //   }
-  // }, [stockData, isLoading]);
+  // Common request body for stock report / zero stock / PDF
+  const buildReportPayload = () => ({
+    customerID: customerId ? Number(customerId) : null,
+    customerName: customerName || null,
+    lotNo: lotNo ? Number(lotNo) : null,
+    vakalNo: vakalNo || null,
+    itemSubCategory: itemSubCategory.length > 0 ? itemSubCategory : null,
+    itemMarks: itemMarks || null,
+    unit: unit.length > 0 ? unit[0] : null,
+    asOnDate: asOnDate ? formatApiDate(asOnDate) : null,
+    qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
+  });
 
   // Updated handleSearch function
   const handleSearch = async () => {
@@ -700,8 +679,7 @@ const StockReportScreen: React.FC = () => {
 
     // Mandatory field validation
     const missingFields: string[] = [];
-    if (!fromDate) missingFields.push('From Date');
-    if (!toDate) missingFields.push('To Date');
+    if (!asOnDate) missingFields.push('As On Date');
     if (unit.length === 0) missingFields.push('Unit');
 
     if (missingFields.length > 0) {
@@ -710,7 +688,7 @@ const StockReportScreen: React.FC = () => {
       Alert.alert('Required Fields Missing', message);
       return;
     }
-    // FIX 3: Clear data here (on explicit search action) instead of on toggle,
+    // Clear data here (on explicit search action) instead of on toggle,
     // so the layout shift only happens intentionally when user taps Search.
     setStockData([]);
     setAllStockData([]);
@@ -780,17 +758,7 @@ const StockReportScreen: React.FC = () => {
 
   // Fetch regular stock report items
   const fetchStockReportItems = async () => {
-    const payload = {
-      customerName: customerName || null,
-      lotNo: lotNo ? Number(lotNo) : null,
-      vakalNo: vakalNo || null,
-      itemSubCategory: itemSubCategory.length > 0 ? itemSubCategory : null,
-      itemMarks: itemMarks || null,
-      unit: unit.length > 0 ? unit[0] : null,
-      fromDate: fromDate ? formatApiDate(fromDate) : null,
-      toDate: toDate ? formatApiDate(toDate) : null,
-      qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
-    };
+    const payload = buildReportPayload();
 
     const apiEndpoint = `${API_ENDPOINTS.GET_STOCK_REPORT}?customerId=${customerId}`;
 
@@ -825,17 +793,7 @@ const StockReportScreen: React.FC = () => {
 
   // Fetch zero stock items
   const fetchZeroStockItems = async () => {
-    const payload = {
-      customerName: customerName || null,
-      lotNo: lotNo ? Number(lotNo) : null,
-      vakalNo: vakalNo || null,
-      itemSubCategory: itemSubCategory.length > 0 ? itemSubCategory : null,
-      itemMarks: itemMarks || null,
-      unit: unit.length > 0 ? unit[0] : null,
-      fromDate: fromDate ? formatApiDate(fromDate) : null,
-      toDate: toDate ? formatApiDate(toDate) : null,
-      qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
-    };
+    const payload = buildReportPayload();
 
     const apiEndpoint = `${API_ENDPOINTS.GET_ZERO_STOCK_REPORT}?customerId=${customerId}`;
 
@@ -882,12 +840,11 @@ const StockReportScreen: React.FC = () => {
     setLotNo('');
     setVakalNo('');
     setItemSubCategory([]);
+    setSubCategories([]);
     setItemMarks('');
     setUnit([]);
-    setFromDate(null);
-    setToDate(null);
-    setIsFromDateSelected(false);
-    setIsToDateSelected(false);
+    setAsOnDate(null);
+    setIsAsOnDateSelected(false);
     setQtyLessThan('');
     setStockData([]);
     setAllStockData([]);
@@ -911,10 +868,10 @@ const StockReportScreen: React.FC = () => {
       Alert.alert('No Data', 'There is no data to download.');
       return;
     }
-    if (!fromDate || !toDate || unit.length === 0) {
+    if (!asOnDate || unit.length === 0) {
       Alert.alert(
         'Required Fields Missing',
-        'From Date, To Date, and Unit are required.',
+        'As On Date and Unit are required.',
       );
       return;
     }
@@ -928,17 +885,7 @@ const StockReportScreen: React.FC = () => {
         ? API_ENDPOINTS.GET_ZERO_STOCK_PDF_REPORT
         : API_ENDPOINTS.GET_STOCK_PDF_REPORT;
 
-      const payload = {
-        customerName: customerName || null,
-        lotNo: lotNo ? Number(lotNo) : null,
-        vakalNo: vakalNo || null,
-        itemSubCategory: itemSubCategory.length > 0 ? itemSubCategory : null,
-        itemMarks: itemMarks || null,
-        unit: unit.length > 0 ? unit[0] : null,
-        fromDate: fromDate ? formatApiDate(fromDate) : null,
-        toDate: toDate ? formatApiDate(toDate) : null,
-        qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
-      };
+      const payload = buildReportPayload();
 
       const currentDate = new Date();
       const dateString = format(currentDate, 'yyyyMMdd_HHmmss');
@@ -1062,84 +1009,45 @@ const StockReportScreen: React.FC = () => {
     }
   };
 
-  // Handle date change for From Date
-  const onFromDateChange = (
+  // Apply a newly chosen As On Date: store it, reset sub category selection
+  // (availability depends on the date) and refetch the sub category list.
+  const applyAsOnDate = (date: Date) => {
+    setAsOnDate(date);
+    setIsAsOnDateSelected(true);
+    setItemSubCategory([]);
+    fetchSubCategories(formatApiDate(date)!, isZeroStock);
+  };
+
+  // Handle date change for As On Date
+  const onAsOnDateChange = (
     event: DateTimePickerEvent,
     selectedDate?: Date,
   ) => {
     if (Platform.OS === 'android') {
-      setShowFromDatePicker(false);
+      setShowAsOnDatePicker(false);
     }
 
     if (selectedDate) {
-      console.log(`From date changing to ${selectedDate.toISOString()}`);
-      setTempFromDate(selectedDate);
+      console.log(`As On date changing to ${selectedDate.toISOString()}`);
+      setTempAsOnDate(selectedDate);
 
       if (Platform.OS === 'android') {
-        setFromDate(selectedDate);
-        setIsFromDateSelected(true);
-        console.log('From date updated (Android)');
-        // Trigger subcategory fetch if toDate is already selected
-        if (toDate) {
-          const from = formatApiDate(selectedDate)!;
-          const to = formatApiDate(toDate)!;
-          fetchSubCategories(from, to, isZeroStock);
-        }
-      }
-    }
-  };
-
-  // Handle date change for To Date
-  const onToDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowToDatePicker(false);
-    }
-
-    if (selectedDate) {
-      console.log(`To date changing to ${selectedDate.toISOString()}`);
-      setTempToDate(selectedDate);
-
-      if (Platform.OS === 'android') {
-        setToDate(selectedDate);
-        setIsToDateSelected(true);
-        console.log('To date updated (Android)');
-        // Trigger subcategory fetch if fromDate is already selected
-        if (fromDate) {
-          const from = formatApiDate(fromDate)!;
-          const to = formatApiDate(selectedDate)!;
-          fetchSubCategories(from, to, isZeroStock);
-        }
+        // Android fires onChange with type 'dismissed' and no date on cancel,
+        // so reaching here means the user actually picked a date.
+        applyAsOnDate(selectedDate);
+        console.log('As On date updated (Android)');
       }
     }
   };
 
   // Confirm date selection for iOS
-  const confirmFromDate = () => {
-    console.log(`Confirming from date change to ${tempFromDate.toISOString()}`);
-    setFromDate(tempFromDate);
-    setIsFromDateSelected(true);
-    setShowFromDatePicker(false);
-    console.log('From date updated (iOS)');
-    // Trigger subcategory fetch if toDate is already selected
-    if (toDate) {
-      const from = formatApiDate(tempFromDate)!;
-      const to = formatApiDate(toDate)!;
-      fetchSubCategories(from, to, isZeroStock);
-    }
-  };
-
-  const confirmToDate = () => {
-    console.log(`Confirming to date change to ${tempToDate.toISOString()}`);
-    setToDate(tempToDate);
-    setIsToDateSelected(true);
-    setShowToDatePicker(false);
-    console.log('To date updated (iOS)');
-    // Trigger subcategory fetch if fromDate is already selected
-    if (fromDate) {
-      const from = formatApiDate(fromDate)!;
-      const to = formatApiDate(tempToDate)!;
-      fetchSubCategories(from, to, isZeroStock);
-    }
+  const confirmAsOnDate = () => {
+    console.log(
+      `Confirming As On date change to ${tempAsOnDate.toISOString()}`,
+    );
+    setShowAsOnDatePicker(false);
+    applyAsOnDate(tempAsOnDate);
+    console.log('As On date updated (iOS)');
   };
 
   // Render table header
@@ -1198,7 +1106,7 @@ const StockReportScreen: React.FC = () => {
         style={[styles.tableCell, styles.inwardDateColumn]}
         numberOfLines={1}
       >
-        {item.INWARD_DT || '-'}
+        {formatTableDate(item.INWARD_DT)}
       </Text>
       <Text style={[styles.tableCell, styles.lotColumn]}>{item.LOT_NO}</Text>
       <Text style={[styles.tableCell, styles.itemDescColumn]} numberOfLines={2}>
@@ -1287,71 +1195,50 @@ const StockReportScreen: React.FC = () => {
             </View>
           </View>
 
+          {/* As On Date (single date, replaces From Date / To Date) */}
           <View style={styles.formRow}>
             <View style={styles.formColumn}>
-              {/* <Text style={styles.label}>From Date</Text> */}
               <Text style={styles.label}>
-                From Date <Text style={styles.requiredAsterisk}>*</Text>
+                As On Date <Text style={styles.requiredAsterisk}>*</Text>
               </Text>
               <TouchableOpacity
                 style={styles.input}
                 activeOpacity={0.7}
                 onPress={() => {
-                  setTempFromDate(fromDate || new Date());
-                  setShowFromDatePicker(true);
+                  setTempAsOnDate(asOnDate || new Date());
+                  setShowAsOnDatePicker(true);
                 }}
               >
                 <Text
                   style={
-                    isFromDateSelected
+                    isAsOnDateSelected
                       ? styles.dateText
                       : styles.placeholderText
                   }
                 >
-                  {isFromDateSelected
-                    ? formatDisplayDate(fromDate)
+                  {isAsOnDateSelected
+                    ? formatDisplayDate(asOnDate)
                     : 'DD/MM/YYYY'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.formColumn}>
-              {/* <Text style={styles.label}>To Date</Text> */}
-              <Text style={styles.label}>
-                To Date <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={styles.input}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setTempToDate(toDate || new Date());
-                  setShowToDatePicker(true);
-                }}
-              >
-                <Text
-                  style={
-                    isToDateSelected ? styles.dateText : styles.placeholderText
-                  }
-                >
-                  {isToDateSelected ? formatDisplayDate(toDate) : 'DD/MM/YYYY'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Spacer keeps As On Date at half width like the other fields */}
+            <View style={styles.formColumn} />
           </View>
 
           {/*
-            FIX 1: Item Sub Category field is now ONLY rendered when both
-            From Date and To Date are selected. This eliminates the confusion
-            of showing a disabled/non-functional field before dates are picked.
-            A helper text guides the user when dates are not yet chosen.
+            Item Sub Category is fetched from StockCategorySubAvailability
+            for the chosen As On Date. Subcategories with available=false
+            are shown but disabled in the dropdown.
           */}
           <View style={styles.formRow}>
             <View style={styles.formColumn}>
               <Text style={styles.label}>Item Sub Category</Text>
-              {!datesSelected ? (
+              {!dateSelected ? (
                 <View style={[styles.input, styles.disabledFieldContainer]}>
                   <Text style={styles.disabledFieldText}>
-                    Select From & To Date first
+                    Select As On Date first
                   </Text>
                 </View>
               ) : (
@@ -1491,27 +1378,6 @@ const StockReportScreen: React.FC = () => {
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           )}
-
-          {/* PDF Loading Overlay */}
-          {/* {isPdfDownloading && (
-            <View style={styles.pdfLoadingOverlay}>
-              <View style={styles.pdfLoadingCard}>
-                <Text style={styles.pdfLoadingText}>Generating PDF</Text>
-                <View style={styles.progressBarContainer}>
-                  <View
-                    style={[
-                      styles.progressBar,
-                      {
-                        width: `${pdfProgress}%`,
-                        backgroundColor: '#F48221',
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.progressText}>{pdfStatusMessage}</Text>
-              </View>
-            </View>
-          )} */}
         </ScrollView>
       </TouchableWithoutFeedback>
 
@@ -1541,77 +1407,37 @@ const StockReportScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* FROM DATE — Android: bare picker, iOS: custom Modal */}
-      {showFromDatePicker && Platform.OS === 'android' && (
+      {/* AS ON DATE — Android: bare picker, iOS: custom Modal */}
+      {showAsOnDatePicker && Platform.OS === 'android' && (
         <DateTimePicker
-          value={tempFromDate}
+          value={tempAsOnDate}
           mode="date"
           display="default"
-          onChange={onFromDateChange}
+          onChange={onAsOnDateChange}
         />
       )}
-      {showFromDatePicker && Platform.OS === 'ios' && (
+      {showAsOnDatePicker && Platform.OS === 'ios' && (
         <Modal transparent={true} animationType="slide">
           <View style={styles.datePickerContainer}>
             <View style={styles.datePickerModal}>
               <DateTimePicker
-                value={tempFromDate}
+                value={tempAsOnDate}
                 mode="date"
                 display="spinner"
-                onChange={onFromDateChange}
+                onChange={onAsOnDateChange}
                 textColor="#000000"
                 style={styles.datePicker}
               />
               <View style={styles.datePickerButtons}>
                 <TouchableOpacity
                   style={styles.cancelButton}
-                  onPress={() => setShowFromDatePicker(false)}
+                  onPress={() => setShowAsOnDatePicker(false)}
                 >
                   <Text style={styles.buttonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.confirmButton}
-                  onPress={confirmFromDate}
-                >
-                  <Text style={styles.buttonText}>Confirm</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* TO DATE — Android: bare picker, iOS: custom Modal */}
-      {showToDatePicker && Platform.OS === 'android' && (
-        <DateTimePicker
-          value={tempToDate}
-          mode="date"
-          display="default"
-          onChange={onToDateChange}
-        />
-      )}
-      {showToDatePicker && Platform.OS === 'ios' && (
-        <Modal transparent={true} animationType="slide">
-          <View style={styles.datePickerContainer}>
-            <View style={styles.datePickerModal}>
-              <DateTimePicker
-                value={tempToDate}
-                mode="date"
-                display="spinner"
-                onChange={onToDateChange}
-                textColor="#000000"
-                style={styles.datePicker}
-              />
-              <View style={styles.datePickerButtons}>
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={() => setShowToDatePicker(false)}
-                >
-                  <Text style={styles.buttonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={confirmToDate}
+                  onPress={confirmAsOnDate}
                 >
                   <Text style={styles.buttonText}>Confirm</Text>
                 </TouchableOpacity>
@@ -1688,7 +1514,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // FIX 1: Disabled field style — visually distinct, not interactive
+  // Disabled field style — visually distinct, not interactive
   disabledFieldContainer: {
     backgroundColor: '#F1F5F9',
     borderColor: '#CBD5E1',

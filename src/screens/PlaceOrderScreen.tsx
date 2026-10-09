@@ -23,6 +23,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import { requestSearchFocus } from '../utils/searchFocus';
 
 interface DetailRowProps {
   label: string;
@@ -149,6 +150,15 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
       exceededRef.current = null;
     }
   }, [groupedOrderItems]);
+
+  const handleFillCart = useCallback(() => {
+    requestSearchFocus();
+    if (navigation.canGoBack()) {
+      navigation.goBack(); // back to the existing Home inside BottomTabNavigator
+    } else {
+      (navigation as any).navigate('BottomTabNavigator');
+    }
+  }, [navigation]);
 
   const handleQuantityChange = useCallback(
     (
@@ -575,7 +585,7 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
             <Text style={styles.emptyCartText}>Your cart is empty</Text>
             <TouchableOpacity
               style={styles.homeButton}
-              onPress={() => navigation.navigate('HomeScreen' as never)}
+              onPress={handleFillCart}
             >
               <Text style={styles.homeButtonText}>Fill Cart</Text>
             </TouchableOpacity>

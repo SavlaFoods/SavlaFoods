@@ -667,10 +667,20 @@ const StockReportScreen: React.FC = () => {
     vakalNo: vakalNo || null,
     itemSubCategory: itemSubCategory.length > 0 ? itemSubCategory : null,
     itemMarks: itemMarks || null,
-    unit: unit.length > 0 ? unit[0] : null,
+    unit: unit.length > 0 ? unit : null,
     asOnDate: asOnDate ? formatApiDate(asOnDate) : null,
     qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
   });
+
+  const matchesSelectedUnits = (item: StockReportItem): boolean => {
+    if (unit.length === 0) return true;
+    const names = Array.isArray(item.UNIT_NAME)
+      ? item.UNIT_NAME
+      : String(item.UNIT_NAME ?? '')
+          .split(',')
+          .map(s => s.trim());
+    return names.some(n => unit.includes(n));
+  };
 
   // Updated handleSearch function
   const handleSearch = async () => {
@@ -714,20 +724,22 @@ const StockReportScreen: React.FC = () => {
         fetchedData = (await fetchStockReportItems()) || [];
       }
 
+      // Safety filter so the table always matches the selected units
+      fetchedData = fetchedData.filter(matchesSelectedUnits);
+      setAllStockData(fetchedData);
+      setTotalRecords(fetchedData.length);
+
       if (fetchedData.length > 0) {
         const totalPages = Math.ceil(
           fetchedData.length / pagination.itemsPerPage,
         );
         setPagination(prev => ({
           ...prev,
+          currentPage: 1,
           totalItems: fetchedData.length,
           totalPages: totalPages || 1,
         }));
-
-        const startIndex = 0;
-        const endIndex = pagination.itemsPerPage;
-        const paginatedData = fetchedData.slice(startIndex, endIndex);
-        setStockData(paginatedData);
+        setStockData(fetchedData.slice(0, pagination.itemsPerPage));
       }
     } catch (error) {
       console.error('Error fetching stock data:', error);

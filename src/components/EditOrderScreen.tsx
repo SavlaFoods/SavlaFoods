@@ -13,6 +13,7 @@ import {
   Platform,
   Animated,
   Modal,
+  Keyboard,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { CommonActions, RouteProp } from '@react-navigation/native';
@@ -78,6 +79,25 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
     // Remove invalid or unwanted characters (e.g., ¿)
     return input.replace(/[^\x20-\x7E]/g, ''); // Keep only printable ASCII characters
   };
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, e =>
+      setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [formData, setFormData] = useState({
     transporterName: order.transporterName || '',
@@ -629,12 +649,15 @@ const EditOrderScreen = ({ route, navigation }: EditOrderScreenProps) => {
   return (
     <View style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
         <ScrollView
           style={styles.scrollView}
+          contentContainerStyle={{ paddingBottom: keyboardHeight + 40 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.purpleHeaderCard}>
             <View style={styles.purpleHeader}>

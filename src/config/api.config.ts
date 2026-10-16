@@ -64,6 +64,7 @@ export const API_ENDPOINTS = {
 
   //ZeroStockReport
   GET_ZERO_STOCK_REPORT: `${API_BASE_URL}/zerostock/getZeroStock`,
+  GET_FINANCIAL_YEARS: `${API_BASE_URL}/zerostock/getFinancialYears`,
 
   //PDF
   GET_STOCK_PDF_REPORT: `${API_BASE_URL}/stocks/getStockpdf`,

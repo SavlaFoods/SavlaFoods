@@ -122,13 +122,37 @@ const ReportSummaryScreen: React.FC = () => {
     return `${year}-${month}-${day}`;
   };
 
+  // Today's date in Indian Standard Time (UTC+5:30), as a local midnight Date
+  const getIndiaToday = (): Date => {
+    const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    return new Date(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
+  };
+
+  const addDays = (date: Date, days: number): Date =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+
+  const isSameDay = (a: Date, b: Date): boolean =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
   // ─── Date Picker Handlers ─────────────────────────────────────────────────
 
   const handleFromDateConfirm = (date: Date) => {
     setFromDate(date);
     setShowFromDatePicker(false);
-    // If the existing "to" date is now before "from", clear it
-    if (toDate && date > toDate) {
+
+    const today = getIndiaToday();
+
+    if (isSameDay(date, today)) {
+      // From date is today (IST) -> To date becomes tomorrow
+      setToDate(addDays(today, 1));
+      return;
+    }
+
+    // Otherwise keep the existing behaviour, and also drop an old "tomorrow"
+    // To date, since it is only allowed when From is today
+    if (toDate && (date > toDate || toDate > today)) {
       setToDate(null);
     }
   };
@@ -748,12 +772,15 @@ const ReportSummaryScreen: React.FC = () => {
         </Modal>
 
         {/* From Date Picker */}
+
         <DateTimePickerModal
           isVisible={showFromDatePicker}
           mode="date"
-          date={fromDate ?? new Date()}
+          date={fromDate ?? getIndiaToday()}
           minimumDate={new Date(2020, 0, 1)}
-          maximumDate={toDate ?? new Date()}
+          maximumDate={
+            toDate && toDate < getIndiaToday() ? toDate : getIndiaToday()
+          }
           onConfirm={handleFromDateConfirm}
           onCancel={() => setShowFromDatePicker(false)}
         />
@@ -762,9 +789,13 @@ const ReportSummaryScreen: React.FC = () => {
         <DateTimePickerModal
           isVisible={showToDatePicker}
           mode="date"
-          date={toDate ?? fromDate ?? new Date()}
+          date={toDate ?? fromDate ?? getIndiaToday()}
           minimumDate={fromDate ?? new Date(2020, 0, 1)}
-          maximumDate={new Date()}
+          maximumDate={
+            fromDate && isSameDay(fromDate, getIndiaToday())
+              ? addDays(getIndiaToday(), 1)
+              : getIndiaToday()
+          }
           onConfirm={handleToDateConfirm}
           onCancel={() => setShowToDatePicker(false)}
         />

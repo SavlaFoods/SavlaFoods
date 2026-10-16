@@ -40,6 +40,8 @@ import { Buffer } from 'buffer';
 import notifee, { AndroidImportance } from '@notifee/react-native';
 // import PushNotification from 'react-native-push-notification';
 
+const MAX_FINANCIAL_YEARS = 10;
+
 interface DropdownOption {
   label: string;
   value: string;
@@ -50,6 +52,9 @@ interface CustomDropdownProps {
   selectedValue: string;
   onSelect: (value: string) => void;
   placeholder: string;
+  showClose?: boolean; // new
+  title?: string;
+  loading?: boolean; // new
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({
@@ -57,6 +62,9 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
   selectedValue,
   onSelect,
   placeholder,
+  showClose = false,
+  title,
+  loading = false, // new
 }) => {
   const [isVisible, setIsVisible] = useState(false);
 
@@ -78,7 +86,11 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
         >
           {displayText}
         </Text>
-        <Text style={styles.dropdownIcon}>▼</Text>
+        {loading ? (
+          <ActivityIndicator size="small" color="#E87830" />
+        ) : (
+          <Text style={styles.dropdownIcon}>▼</Text>
+        )}
       </TouchableOpacity>
 
       <Modal
@@ -93,33 +105,51 @@ const CustomDropdown: React.FC<CustomDropdownProps> = ({
           onPress={() => setIsVisible(false)}
         >
           <View style={styles.modalContent}>
-            <FlatList
-              data={options}
-              keyExtractor={item => item.value}
-              style={{ width: '100%' }}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
+            {showClose && (
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{title || ''}</Text>
                 <TouchableOpacity
-                  style={[
-                    styles.optionItem,
-                    selectedValue === item.value && styles.selectedOption,
-                  ]}
-                  onPress={() => {
-                    onSelect(item.value);
-                    setIsVisible(false);
-                  }}
+                  onPress={() => setIsVisible(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      selectedValue === item.value && styles.selectedOptionText,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
+                  <MaterialIcons name="close" size={22} color="#666" />
                 </TouchableOpacity>
-              )}
-            />
+              </View>
+            )}
+            {loading ? (
+              <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#E87830" />
+              </View>
+            ) : (
+              <FlatList
+                data={options}
+                keyExtractor={item => item.value}
+                style={{ width: '100%' }}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.optionItem,
+                      selectedValue === item.value && styles.selectedOption,
+                    ]}
+                    onPress={() => {
+                      onSelect(item.value);
+                      setIsVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        selectedValue === item.value &&
+                          styles.selectedOptionText,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -144,6 +174,9 @@ interface StockReportItem {
   EXPIRY_DATE: string | null;
   REMARKS: string | null;
   STATUS: string;
+  QUANTITY: number; // new
+  REQUESTED_QTY: number;
+
   //  ITEM_CATEG_NAME: string;
   SUB_CATEGORY_NAME: string;
   NET_QTY: number;
@@ -154,6 +187,12 @@ interface StockReportResponse {
   status: string;
   count: number;
   data: StockReportItem[];
+}
+
+interface FinancialYearItem {
+  value: string; // "26-27"
+  label: string; // "2026-27"
+  asOnDate: string; // "2026-10-15" (last date of that FY)
 }
 
 // Matches the StockCategorySubAvailability API response (allSubCategories[])
@@ -249,6 +288,8 @@ const StockReportScreen: React.FC = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const resultsRef = useRef<View>(null);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
+  // True when the displayed results came from a normal (non zero stock) search
+  const [showQtyColumns, setShowQtyColumns] = useState(false);
 
   // Zero Stock checkbox state
   const [isZeroStock, setIsZeroStock] = useState(false);
@@ -279,6 +320,11 @@ const StockReportScreen: React.FC = () => {
 
   // Track the active subcategory fetch so stale responses are ignored
   const subCategoryFetchId = useRef<number>(0);
+
+  // Financial Year (only used when Zero Stock is ON)
+  const [financialYears, setFinancialYears] = useState<FinancialYearItem[]>([]);
+  const [financialYear, setFinancialYear] = useState('');
+  const [fyLoading, setFyLoading] = useState(false);
 
   // Format date for display
   const formatDisplayDate = (date: Date | null): string => {
@@ -464,6 +510,39 @@ const StockReportScreen: React.FC = () => {
     }
   };
 
+  const fetchFinancialYears = async () => {
+    try {
+      setFyLoading(true);
+      const response = await axios.get(
+        `${API_ENDPOINTS.GET_FINANCIAL_YEARS}?customerId=${customerId}`,
+        { headers: await getAuthHeaders(), timeout: 30000 },
+      );
+      if (
+        response.data?.status === 'success' &&
+        Array.isArray(response.data.data)
+      ) {
+        setFinancialYears(response.data.data.slice(0, MAX_FINANCIAL_YEARS));
+      } else {
+        setFinancialYears([]);
+        console.error('[FY API] Unexpected response:', response.data);
+      }
+    } catch (error) {
+      console.error('[FY API] Error:', error);
+      setFinancialYears([]);
+      Alert.alert('Error', 'Could not load financial years.');
+    } finally {
+      setFyLoading(false);
+    }
+  };
+
+  // Load once when Zero Stock is switched on
+  useEffect(() => {
+    if (isZeroStock && customerId && financialYears.length === 0) {
+      fetchFinancialYears();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isZeroStock, customerId]);
+
   // Fetch display name and customer ID
   useEffect(() => {
     const fetchUserData = async () => {
@@ -495,6 +574,28 @@ const StockReportScreen: React.FC = () => {
 
   const dateSelected = !!asOnDate;
 
+  const financialYearOptions: DropdownOption[] = [
+    { label: '--SELECT--', value: '' },
+    ...financialYears.map(fy => ({ label: fy.label, value: fy.value })),
+  ];
+
+  // As On Date is locked in Zero Stock mode until a Financial Year is chosen
+  const asOnDateEnabled = !isZeroStock || !!financialYear;
+
+  const parseLocalDate = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  // In Zero Stock mode, limit the picker to the selected FY (1 Apr -> FY end date)
+  const fyBounds = (() => {
+    if (!isZeroStock || !financialYear) return null;
+    const fy = financialYears.find(f => f.value === financialYear);
+    if (!fy) return null;
+    const startYear = 2000 + Number(fy.value.split('-')[0]);
+    return { min: new Date(startYear, 3, 1), max: parseLocalDate(fy.asOnDate) };
+  })();
+
   // Sub category options come from the availability API; unavailable ones are disabled
   const itemSubCategoryOptions = dateSelected
     ? subCategories
@@ -521,6 +622,31 @@ const StockReportScreen: React.FC = () => {
     { label: 'D-514', value: 'D-514' },
   ];
 
+  const handleFinancialYearChange = (value: string) => {
+    console.log('Financial Year changed:', value);
+    setFinancialYear(value);
+
+    // Cancel any in-flight sub category fetch and reset dependent fields
+    subCategoryFetchId.current++;
+    setItemSubCategory([]);
+    setSubCategories([]);
+    setSubCategoryLoading(false);
+
+    const fy = financialYears.find(f => f.value === value);
+
+    if (!fy) {
+      // "--SELECT--" chosen: lock the date again
+      setAsOnDate(null);
+      setIsAsOnDateSelected(false);
+      return;
+    }
+
+    // Default As On Date = the date the API returns for this FY
+    // (31 March of the FY end year; today's date for the running FY)
+    const defaultDate = parseLocalDate(fy.asOnDate);
+    setTempAsOnDate(defaultDate);
+    applyAsOnDate(defaultDate); // sets the date and fetches sub categories
+  };
   // Toggle Zero Stock without immediately clearing stockData/allStockData
   // to prevent the brief UI layout shift. Data is cleared only when a new search
   // is actually executed (inside handleSearch).
@@ -529,8 +655,17 @@ const StockReportScreen: React.FC = () => {
     console.log('Zero Stock toggled:', newState);
     setIsZeroStock(newState);
     setItemSubCategory([]);
-    // Re-fetch subcategories with the new toggle state if the date is ready
-    if (asOnDate) {
+    setFinancialYear('');
+
+    if (newState) {
+      // Zero stock: force the FY -> date -> sub category order
+      subCategoryFetchId.current++;
+      setAsOnDate(null);
+      setIsAsOnDateSelected(false);
+      setSubCategories([]);
+      setSubCategoryLoading(false);
+    } else if (asOnDate) {
+      // Normal mode: existing behaviour
       fetchSubCategories(formatApiDate(asOnDate)!, newState);
     }
   };
@@ -670,6 +805,7 @@ const StockReportScreen: React.FC = () => {
     unit: unit.length > 0 ? unit : null,
     asOnDate: asOnDate ? formatApiDate(asOnDate) : null,
     qtyLessThan: qtyLessThan ? Number(qtyLessThan) : null,
+    ...(isZeroStock && financialYear ? { financialYear } : {}),
   });
 
   const matchesSelectedUnits = (item: StockReportItem): boolean => {
@@ -689,6 +825,7 @@ const StockReportScreen: React.FC = () => {
 
     // Mandatory field validation
     const missingFields: string[] = [];
+    if (isZeroStock && !financialYear) missingFields.push('Financial Year');
     if (!asOnDate) missingFields.push('As On Date');
     if (unit.length === 0) missingFields.push('Unit');
 
@@ -704,6 +841,7 @@ const StockReportScreen: React.FC = () => {
     setAllStockData([]);
     setTotalRecords(0);
     setIsScrollingToResults(true);
+    setShowQtyColumns(!isZeroStock); // new
 
     setPagination({
       ...pagination,
@@ -865,6 +1003,8 @@ const StockReportScreen: React.FC = () => {
     setIsScrollingToResults(false);
     setIsZeroStock(false);
     setHasSearched(false);
+    setFinancialYear('');
+    setShowQtyColumns(false);
 
     setPagination({
       currentPage: 1,
@@ -920,7 +1060,7 @@ const StockReportScreen: React.FC = () => {
       }
 
       setPdfProgress(20);
-      setPdfStatusMessage('Downloading PDF...');
+      setPdfStatusMessage('');
 
       // KEY FIX: specify `path` explicitly instead of `fileCache: true`.
       // Letting RNBlobUtil auto-generate a cache path is what triggers the
@@ -974,7 +1114,7 @@ const StockReportScreen: React.FC = () => {
       }
 
       setPdfProgress(100);
-      setPdfStatusMessage('Download complete!');
+      setPdfStatusMessage('PDF generated successfully.');
 
       setTimeout(() => {
         setIsPdfDownloading(false);
@@ -1081,6 +1221,17 @@ const StockReportScreen: React.FC = () => {
         Item Marks
       </Text>
       <Text style={[styles.tableHeaderCell, styles.netQtyColumn]}>Net Qty</Text>
+
+      {showQtyColumns && (
+        <>
+          <Text style={[styles.tableHeaderCell, styles.quantityColumn]}>
+            Balance Qty
+          </Text>
+          <Text style={[styles.tableHeaderCell, styles.requestedQtyColumn]}>
+            Ordered Qty
+          </Text>
+        </>
+      )}
       <Text style={[styles.tableHeaderCell, styles.expiryDateColumn]}>
         Expiry Date
       </Text>
@@ -1136,6 +1287,17 @@ const StockReportScreen: React.FC = () => {
       <Text style={[styles.tableCell, styles.netQtyColumn]}>
         {item.NET_QTY}
       </Text>
+
+      {showQtyColumns && (
+        <>
+          <Text style={[styles.tableCell, styles.quantityColumn]}>
+            {item.QUANTITY ?? '-'}
+          </Text>
+          <Text style={[styles.tableCell, styles.requestedQtyColumn]}>
+            {item.REQUESTED_QTY ?? '-'}
+          </Text>
+        </>
+      )}
       <Text
         style={[styles.tableCell, styles.expiryDateColumn]}
         numberOfLines={1}
@@ -1207,36 +1369,62 @@ const StockReportScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* As On Date (single date, replaces From Date / To Date) */}
+          {/* Financial Year (Zero Stock only) + As On Date in one row */}
           <View style={styles.formRow}>
+            {isZeroStock && (
+              <View style={styles.formColumn}>
+                <Text style={styles.label}>
+                  Financial Year <Text style={styles.requiredAsterisk}>*</Text>
+                </Text>
+                <CustomDropdown
+                  options={financialYearOptions}
+                  selectedValue={financialYear}
+                  onSelect={handleFinancialYearChange}
+                  placeholder={fyLoading ? 'Loading...' : '--SELECT--'}
+                  showClose={true}
+                  title="Select Financial Year"
+                  loading={fyLoading}
+                />
+              </View>
+            )}
+
             <View style={styles.formColumn}>
               <Text style={styles.label}>
                 As On Date <Text style={styles.requiredAsterisk}>*</Text>
               </Text>
               <TouchableOpacity
-                style={styles.input}
+                style={[
+                  styles.input,
+                  !asOnDateEnabled && styles.disabledFieldContainer,
+                ]}
                 activeOpacity={0.7}
+                disabled={!asOnDateEnabled}
                 onPress={() => {
                   setTempAsOnDate(asOnDate || new Date());
                   setShowAsOnDatePicker(true);
                 }}
               >
                 <Text
+                  numberOfLines={1}
                   style={
-                    isAsOnDateSelected
+                    !asOnDateEnabled
+                      ? styles.disabledFieldText
+                      : isAsOnDateSelected
                       ? styles.dateText
                       : styles.placeholderText
                   }
                 >
-                  {isAsOnDateSelected
+                  {!asOnDateEnabled
+                    ? 'Select Financial Year'
+                    : isAsOnDateSelected
                     ? formatDisplayDate(asOnDate)
                     : 'DD/MM/YYYY'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Spacer keeps As On Date at half width like the other fields */}
-            <View style={styles.formColumn} />
+            {/* Spacer only when Zero Stock is off, so As On Date stays half width */}
+            {!isZeroStock && <View style={styles.formColumn} />}
           </View>
 
           {/*
@@ -1785,7 +1973,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     paddingHorizontal: 6,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   tableRow: {
     flexDirection: 'row',
@@ -1803,7 +1991,7 @@ const styles = StyleSheet.create({
   tableCell: {
     paddingHorizontal: 4,
     fontSize: 12,
-    textAlign: 'center',
+    textAlign: 'left',
   },
 
   // Column widths
@@ -1883,36 +2071,54 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1000,
   },
-  pdfLoadingCard: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    width: '80%',
-    maxWidth: 300,
-  },
-  pdfLoadingText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333',
-  },
-  progressBarContainer: {
-    width: '100%',
-    height: 20,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
+
   progressBar: {
     height: '100%',
     backgroundColor: '#E87830',
   },
-  progressText: {
+
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#333',
+  },
+  quantityColumn: { width: 80 },
+  requestedQtyColumn: { width: 110 },
+  pdfLoadingCard: {
+    backgroundColor: 'white',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    width: '60%',
+    maxWidth: 220,
+  },
+  pdfLoadingText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#333',
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressText: {
+    color: '#666',
+    fontSize: 11,
     textAlign: 'center',
   },
 });

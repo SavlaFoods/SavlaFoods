@@ -14,6 +14,7 @@ import {
   BackHandler,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import {
   useNavigation,
@@ -146,6 +147,29 @@ const HomeScreen: React.FC = () => {
   const [searchKey, setSearchKey] = useState(0);
   const [autoFocusSearch, setAutoFocusSearch] = useState(false);
 
+  const KB_BAR_HEIGHT = 48;
+  const containerRef = useRef<View>(null);
+  const [barTop, setBarTop] = useState<number | null>(null);
+
+  useEffect(() => {
+    const showEvt =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const show = Keyboard.addListener(showEvt, e => {
+      containerRef.current?.measureInWindow((_x, y) => {
+        setBarTop(e.endCoordinates.screenY - KB_BAR_HEIGHT - y);
+      });
+    });
+    const hide = Keyboard.addListener(hideEvt, () => setBarTop(null));
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (!consumeSearchFocus()) return;
@@ -166,9 +190,10 @@ const HomeScreen: React.FC = () => {
 
   const toggleKeyboardType = () => {
     setIsNumericKeyboard(prev => !prev);
-    // Re-focus so the keyboard reopens with the new type
-    searchInputRef.current?.blur();
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+    if (Platform.OS === 'android') {
+      searchInputRef.current?.blur();
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
   };
 
   const handleClearSearch = () => {
@@ -399,6 +424,29 @@ const HomeScreen: React.FC = () => {
 
   const getNetQuantity = (item: SearchResultItem) =>
     (Number(item.Quantity) || 0) - (Number(item.REQUESTED_QTY) || 0);
+
+  const renderKeyboardBar = () => (
+    <View style={styles.keyboardBar}>
+      <TouchableOpacity
+        style={styles.kbIconBtn}
+        onPress={toggleKeyboardType}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Icon
+          name={isNumericKeyboard ? 'keyboard' : 'dialpad'}
+          size={26}
+          color="#333333"
+        />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={Keyboard.dismiss}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={styles.kbDoneText}>Done</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderCardItem = useCallback(
     ({ item }: { item: CategoryItem }) => {
@@ -656,7 +704,7 @@ const HomeScreen: React.FC = () => {
     <>
       <LayoutWrapper showTabBar={false} route={route}>
         {/* ☝️ Keep showTabBar=false here since native tab bar handles it */}
-        <View style={styles.container}>
+        <View style={styles.container} ref={containerRef} collapsable={false}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
@@ -679,6 +727,10 @@ const HomeScreen: React.FC = () => {
                   onSubmitEditing={handleSearchSubmit}
                   returnKeyType="search"
                   keyboardType={isNumericKeyboard ? 'number-pad' : 'default'}
+                  keyboardAppearance="light"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
                   textAlignVertical="center"
                   numberOfLines={1}
                 />
@@ -698,12 +750,9 @@ const HomeScreen: React.FC = () => {
                     <Icon name="close" size={22} color="#555" />
                   </TouchableOpacity>
                 ) : (
-                  <Icon
-                    name="search"
-                    size={24}
-                    color="#555"
-                    style={styles.searchIcon}
-                  />
+                  <View style={styles.searchIcon} pointerEvents="none">
+                    <Icon name="search" size={24} color="#555" />
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
@@ -717,11 +766,7 @@ const HomeScreen: React.FC = () => {
                 <Text style={styles.headingText}>Categories</Text>
                 <TouchableOpacity
                   onPress={() => setShowAllCards(!showAllCards)}
-                >
-                  <Text style={styles.moreText}>
-                    {showAllCards ? 'Less' : 'More->'}
-                  </Text>
-                </TouchableOpacity>
+                ></TouchableOpacity>
               </View>
               <FlatList
                 data={
@@ -788,6 +833,12 @@ const HomeScreen: React.FC = () => {
               />
             </>
           )}
+
+          {barTop !== null && (
+            <View style={[styles.kbBarWrapper, { top: barTop }]}>
+              {renderKeyboardBar()}
+            </View>
+          )}
         </View>
       </LayoutWrapper>
 
@@ -829,20 +880,24 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     paddingLeft: 15,
-    paddingRight: 45,
+    paddingRight: 50, // text never runs under the icon area
     paddingVertical: 0,
     textAlignVertical: 'center',
     fontSize: 14,
-    width: '85%',
+    // removed: width: '85%'
   },
   searchIcon: {
-    padding: 10,
-    marginLeft: 0,
-    width: 44,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'absolute',
-    right: 5,
+    backgroundColor: '#fff', // solid white hides the system caps indicator
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    zIndex: 2,
   },
   emptyContainer: {
     flex: 1,
@@ -1035,6 +1090,41 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  keyboardBar: {
+    height: 48,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    backgroundColor: '#F2F2F7',
+    borderTopWidth: 1,
+    borderTopColor: '#D1D1D6',
+  },
+  kbIconBtn: {
+    marginRight: 24,
+    padding: 4,
+  },
+  kbDoneText: {
+    color: '#007AFF', // blue
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  androidBarWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 48,
+    zIndex: 999,
+    elevation: 10,
+  },
+  kbBarWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 48,
+    zIndex: 999,
+    elevation: 10,
   },
 });
 

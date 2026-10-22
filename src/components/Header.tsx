@@ -14,6 +14,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfileMenu from '../screens/ProfileMenu';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { getSecureOrAsyncItem } from '../utils/migrationHelper';
 
 import { useAuthorization } from '../contexts/AuthorizationContext';
 
@@ -50,6 +51,23 @@ const Header: React.FC<HeaderProps> = ({
     if (route.name === 'Orders' || route.name === 'OrdersHome') {
       navigation.navigate('BottomTabNavigator', { screen: 'Home' }); // ✅ fixed
     }
+  };
+
+  const handleCartPress = async () => {
+    // if a parent screen passed its own handler, keep using it
+    if (onCartPress) {
+      onCartPress();
+      return;
+    }
+    // already on the cart, do nothing
+    if (route.name === 'PlaceOrderScreen') return;
+
+    const customerID = await getSecureOrAsyncItem('customerID');
+    navigation.navigate('PlaceOrderScreen', {
+      selectedItems: [],
+      shouldRefresh: true,
+      customerID,
+    });
   };
 
   // Determine if we should show back button
@@ -118,7 +136,7 @@ const Header: React.FC<HeaderProps> = ({
 
       <View style={styles.rightSection}>
         {hasModuleAccess(1) && (
-          <TouchableOpacity onPress={onCartPress} style={styles.iconButton}>
+          <TouchableOpacity onPress={handleCartPress} style={styles.iconButton}>
             <View style={styles.iconContainer}>
               <Icon
                 name="shopping-cart"

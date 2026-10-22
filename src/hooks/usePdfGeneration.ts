@@ -719,9 +719,7 @@ export const usePdfGeneration = ({ isInward }: UsePdfGenerationProps) => {
         const isPublicStorage = !publicFilePath.includes('Android/data');
         Alert.alert(
           'Success',
-          isPublicStorage
-            ? 'Report downloaded as PDF successfully to Downloads folder!'
-            : 'Report saved to app storage. You can access it from within the app.',
+          isPublicStorage ? 'Report generated successfully!' : '',
           [
             {
               text: 'View PDF',

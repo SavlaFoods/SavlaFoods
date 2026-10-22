@@ -1220,7 +1220,6 @@ const StockReportScreen: React.FC = () => {
       <Text style={[styles.tableHeaderCell, styles.itemMarksColumn]}>
         Item Marks
       </Text>
-      <Text style={[styles.tableHeaderCell, styles.netQtyColumn]}>Net Qty</Text>
 
       {showQtyColumns && (
         <>
@@ -1232,6 +1231,8 @@ const StockReportScreen: React.FC = () => {
           </Text>
         </>
       )}
+
+      <Text style={[styles.tableHeaderCell, styles.netQtyColumn]}>Net Qty</Text>
       <Text style={[styles.tableHeaderCell, styles.expiryDateColumn]}>
         Expiry Date
       </Text>
@@ -1284,9 +1285,6 @@ const StockReportScreen: React.FC = () => {
       >
         {item.ITEM_MARKS || '-'}
       </Text>
-      <Text style={[styles.tableCell, styles.netQtyColumn]}>
-        {item.NET_QTY}
-      </Text>
 
       {showQtyColumns && (
         <>
@@ -1298,6 +1296,10 @@ const StockReportScreen: React.FC = () => {
           </Text>
         </>
       )}
+
+      <Text style={[styles.tableCell, styles.netQtyColumn]}>
+        {item.NET_QTY}
+      </Text>
       <Text
         style={[styles.tableCell, styles.expiryDateColumn]}
         numberOfLines={1}

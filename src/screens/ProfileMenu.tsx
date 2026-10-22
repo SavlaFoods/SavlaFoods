@@ -277,6 +277,20 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
       }
 
       // Map the accounts to dropdown items using the correct response structure
+      // RAR of the main company (isCurrentAccount: true)
+      const mainAccount =
+        response.output.currentAccount ||
+        response.output.accounts.find(a => a.isCurrentAccount);
+
+      // If the API's current account has no RAR (e.g. you already switched once),
+      // fall back to the RAR already stored on the device from the main login.
+      const storedRar = await getSecureOrAsyncItem('RAR');
+      const mainRar = isValidRar(mainAccount?.RAR)
+        ? (mainAccount!.RAR as string)
+        : isValidRar(storedRar)
+        ? (storedRar as string)
+        : '';
+
       const accountItems: AccountItem[] = response.output.accounts.map(
         (account: CustomerAccount) => ({
           label: account.DisplayName,
@@ -287,7 +301,8 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
           customerId: account.CustomerID,
           groupId: account.CustomerGroupID,
           token: account.token,
-          rar: account.RAR,
+          // own RAR if present, otherwise inherit from the main company
+          rar: isValidRar(account.RAR) ? (account.RAR as string) : mainRar,
           key: `${account.CustomerID}_${account.DisplayName.replace(
             /\s+/g,
             '_',
@@ -358,6 +373,10 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
     }
   };
 
+  // Returns a usable RAR string, or '' if none
+  const isValidRar = (rar?: string | null) =>
+    !!rar && rar.trim() !== '' && rar.trim() !== ',' && rar !== 'null';
+
   const handleSwitchAccount = async () => {
     if (!value) {
       Alert.alert('Error', 'Please select an account');
@@ -425,6 +444,10 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
           console.warn('WARNING: New token is identical to old token!');
         } else {
           console.log('TOKENS ARE DIFFERENT - this is expected');
+        }
+
+        if (!isValidRar(selectedAccount.rar)) {
+          console.warn('No RAR available for', selectedAccount.label);
         }
 
         // Store the new account information including the token and RAR
@@ -511,6 +534,10 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
       );
       console.log('API response RAR:', currentAccount.RAR);
 
+      const rarToStore = isValidRar(currentAccount.RAR)
+        ? currentAccount.RAR
+        : (await getSecureItem('RAR')) || '';
+
       // Store the new account information
       await Promise.all([
         setSecureItem('customerID', currentAccount.CustomerID.toString()),
@@ -521,6 +548,7 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({
         ),
         setSecureItem('userToken', currentAccount.token), // Store the new token
         setSecureItem('RAR', currentAccount.RAR), // Store the new RAR
+        setSecureItem('RAR', rarToStore),
       ]);
 
       // Verify token was stored

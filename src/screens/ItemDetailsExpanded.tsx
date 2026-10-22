@@ -575,7 +575,7 @@ const ItemDetailsExpanded: React.FC<ItemDetailsExpandedProps> = ({
               <Text style={[styles.tableHeaderCell, { width: 150 }]}>
                 Balance Qty
               </Text>
-              <Text style={[styles.tableHeaderCell, { width: 150 }]}>
+              <Text style={[styles.tableHeaderCell, { width: 120 }]}>
                 Ordered Qty
               </Text>
 

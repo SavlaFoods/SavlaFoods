@@ -1447,76 +1447,42 @@ const FinanceScreen: React.FC = () => {
 
       const url = API_ENDPOINTS.GET_INVOICESUMMARY_PDF_REPORT;
       console.log('Requesting PDF from:', url, payload);
-
       const response = await axios.post(url, payload, {
         headers,
         responseType: 'arraybuffer',
-        timeout: 30000,
+        timeout: 120000,
       });
 
-      // Convert binary response to base64 so RNFS can write it as a file
-      const base64Data = Buffer.from(response.data, 'binary').toString(
-        'base64',
+      // Pass the ArrayBuffer directly (no 'binary' argument)
+      const base64Data = Buffer.from(response.data).toString('base64');
+
+      // Make sure the server really returned a PDF (starts with "%PDF")
+      const header = Buffer.from(base64Data.slice(0, 12), 'base64').toString(
+        'latin1',
       );
-
-      const fileName = `Invoice_Report_${Date.now()}.pdf`;
-
-      // Always write to the app's own storage first - this works reliably
-      // on every Android/iOS version without needing any permissions.
-      // Writing directly to the public Downloads folder can silently fail
-      // on Android 10+ due to scoped storage, which is why nothing was
-      // showing up before.
-      const privatePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
-      await RNFS.writeFile(privatePath, base64Data, 'base64');
-
-      const fileInfo = await RNFS.stat(privatePath);
-      if (!fileInfo || Number(fileInfo.size) === 0) {
-        throw new Error('Downloaded PDF file is empty');
+      if (!header.startsWith('%PDF')) {
+        throw new Error('Server did not return a valid PDF.');
       }
 
-      let viewablePath = privatePath;
-      let savedToPublicDownloads = false;
+      const fileName = `Invoice_Report_${Date.now()}.pdf`;
+      const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+      await RNFS.writeFile(filePath, base64Data, 'base64');
 
-      // Best-effort: also try to copy it into the public Downloads folder
-      // on Android so it shows up there too. If this fails for any reason
-      // (permission denied, scoped storage restrictions, etc.) we simply
-      // fall back to the private copy - the download itself still succeeds.
-      if (Platform.OS === 'android') {
-        try {
-          if (Platform.Version <= 29) {
-            const granted = await PermissionsAndroid.request(
-              PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-            );
-            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-              throw new Error('Storage permission denied');
-            }
-          }
-          const publicPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
-          await RNFS.copyFile(privatePath, publicPath);
-          viewablePath = publicPath;
-          savedToPublicDownloads = true;
-        } catch (copyError) {
-          console.log(
-            'Could not copy to public Downloads, using app storage instead:',
-            copyError,
-          );
-        }
+      const fileInfo = await RNFS.stat(filePath);
+      if (!fileInfo || Number(fileInfo.size) === 0) {
+        throw new Error('Generated PDF file is empty');
       }
 
       Alert.alert(
-        'Download Complete',
-        savedToPublicDownloads
-          ? `${fileName} has been saved to Downloads.`
-          : `${fileName} has been downloaded.`,
+        'PDF Generated',
+        'The PDF report has been generated successfully.',
         [
           { text: 'OK', style: 'cancel' },
           {
             text: 'View PDF',
             onPress: async () => {
               try {
-                await FileViewer.open(viewablePath, {
-                  showOpenWithDialog: true,
-                });
+                await FileViewer.open(filePath, { showOpenWithDialog: true });
               } catch (viewError) {
                 console.log('Error opening PDF:', viewError);
                 Alert.alert(

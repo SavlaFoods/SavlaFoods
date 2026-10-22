@@ -135,7 +135,7 @@ const LotReportScreen = () => {
 
   const fetchLotReport = async (lotNo: string) => {
     if (!lotNo || lotNo.trim() === '') {
-      Alert.alert('Error', 'Please enter a Lot Number');
+      Alert.alert('Lot Number Required', 'Please enter a Lot Number');
       return;
     }
     if (!customerID) {

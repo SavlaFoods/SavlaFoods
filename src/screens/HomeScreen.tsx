@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  InputAccessoryView,
 } from 'react-native';
 import {
   useNavigation,
@@ -151,6 +152,9 @@ const HomeScreen: React.FC = () => {
   const containerRef = useRef<View>(null);
   const [barTop, setBarTop] = useState<number | null>(null);
 
+  type CategoriesState = 'ok' | 'empty' | 'offline' | 'error';
+  const [categoriesState, setCategoriesState] = useState<CategoriesState>('ok');
+
   useEffect(() => {
     const showEvt =
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -162,7 +166,9 @@ const HomeScreen: React.FC = () => {
         setBarTop(e.endCoordinates.screenY - KB_BAR_HEIGHT - y);
       });
     });
-    const hide = Keyboard.addListener(hideEvt, () => setBarTop(null));
+    const hide = Keyboard.addListener(hideEvt, () => {
+      if (!isTogglingKeyboard.current) setBarTop(null);
+    });
 
     return () => {
       show.remove();
@@ -173,12 +179,16 @@ const HomeScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       if (!consumeSearchFocus()) return;
-      console.log('HOME: focus requested');
+
+      // start with a clean search
+      setSearchQuery('');
+      setSearchResults([]);
+
+      setIsNumericKeyboard(true); // open the number keypad for lot no entry
       setAutoFocusSearch(true);
-      setSearchKey(k => k + 1); // brand-new TextInput, so no stale focus state
+      setSearchKey(k => k + 1); // remount TextInput so autoFocus fires
     }, []),
   );
-
   // backup in case autoFocus is swallowed during the screen transition
   useEffect(() => {
     if (searchKey === 0) return;
@@ -188,13 +198,25 @@ const HomeScreen: React.FC = () => {
     return () => clearTimeout(t);
   }, [searchKey]);
 
+  const isTogglingKeyboard = useRef(false);
+
   const toggleKeyboardType = () => {
+    isTogglingKeyboard.current = true;
     setIsNumericKeyboard(prev => !prev);
-    if (Platform.OS === 'android') {
-      searchInputRef.current?.blur();
-      setTimeout(() => searchInputRef.current?.focus(), 100);
-    }
   };
+
+  // runs after the new keyboardType has been rendered
+  useEffect(() => {
+    if (!isTogglingKeyboard.current) return;
+
+    searchInputRef.current?.blur();
+    const t = setTimeout(() => {
+      searchInputRef.current?.focus();
+      isTogglingKeyboard.current = false;
+    }, 50);
+
+    return () => clearTimeout(t);
+  }, [isNumericKeyboard]);
 
   const handleClearSearch = () => {
     handleSearch(''); // clears query, search results and restores categories
@@ -294,8 +316,19 @@ const HomeScreen: React.FC = () => {
         setCategories([]);
         setFilteredCategories([]);
       }
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      const status = error.response?.status;
+
+      if (status === 404) {
+        // keep the warning so a wrong URL doesn't get hidden
+        console.warn('Categories 404:', error.config?.url);
+        setCategoriesState('empty');
+      } else if (!error.response) {
+        setCategoriesState('offline'); // no response = network/timeout
+      } else {
+        console.error('Categories failed:', status, error.message);
+        setCategoriesState('error');
+      }
 
       setCategories([]);
       setFilteredCategories([]);
@@ -618,6 +651,26 @@ const HomeScreen: React.FC = () => {
     [categories, searchItems],
   );
 
+  const EMPTY_MESSAGES = {
+    empty: {
+      icon: 'inventory-2',
+      title: 'No categories available',
+      subtitle:
+        'There are no items available for your account at the moment. Please check back later.',
+    },
+    offline: {
+      icon: 'wifi-off',
+      title: 'No internet connection',
+      subtitle: 'Please check your connection and pull down to try again.',
+    },
+    error: {
+      icon: 'error-outline',
+      title: 'Something went wrong',
+      subtitle:
+        "We couldn't load the categories right now. Please pull down to refresh and try again.",
+    },
+  } as const;
+
   const handleSearchSubmit = () => {
     if (searchQuery.trim()) {
       searchItems(searchQuery);
@@ -705,6 +758,11 @@ const HomeScreen: React.FC = () => {
       <LayoutWrapper showTabBar={false} route={route}>
         {/* ☝️ Keep showTabBar=false here since native tab bar handles it */}
         <View style={styles.container} ref={containerRef} collapsable={false}>
+          {Platform.OS === 'ios' && (
+            <InputAccessoryView nativeID="noAccessory">
+              <View />
+            </InputAccessoryView>
+          )}
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
@@ -725,7 +783,6 @@ const HomeScreen: React.FC = () => {
                   value={searchQuery}
                   onChangeText={handleSearch}
                   onSubmitEditing={handleSearchSubmit}
-                  returnKeyType="search"
                   keyboardType={isNumericKeyboard ? 'number-pad' : 'default'}
                   keyboardAppearance="light"
                   autoCapitalize="none"
@@ -786,15 +843,25 @@ const HomeScreen: React.FC = () => {
                     {loadingCategories ? (
                       <ActivityIndicator size="large" color="#F48221" />
                     ) : (
-                      <>
-                        <Text style={styles.emptyTitle}>
-                          Unable to load categories
-                        </Text>
-                        <Text style={styles.emptySubtitle}>
-                          Please pull down to refresh or try login again in a
-                          few moments.
-                        </Text>
-                      </>
+                      (() => {
+                        const key =
+                          isConnected === false
+                            ? 'offline'
+                            : categoriesState === 'ok'
+                            ? 'error'
+                            : categoriesState;
+                        const msg =
+                          EMPTY_MESSAGES[key as keyof typeof EMPTY_MESSAGES];
+                        return (
+                          <>
+                            <Icon name={msg.icon} size={48} color="#999" />
+                            <Text style={styles.emptyTitle}>{msg.title}</Text>
+                            <Text style={styles.emptySubtitle}>
+                              {msg.subtitle}
+                            </Text>
+                          </>
+                        );
+                      })()
                     )}
                   </View>
                 }

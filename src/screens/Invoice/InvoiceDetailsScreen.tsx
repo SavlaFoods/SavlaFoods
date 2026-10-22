@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   Dimensions,
   Platform,
-  PermissionsAndroid,
   Linking,
 } from 'react-native';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
@@ -277,36 +276,13 @@ const InvoiceDetailsScreen: React.FC = () => {
     }
   };
 
-  const requestStoragePermission = async (): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-          {
-            title: 'Storage Permission',
-            message: 'This app needs access to storage to download PDF files.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          },
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (error: unknown) {
-        console.warn('Storage Permission Error:', error);
-        return false;
-      }
-    }
-    return true;
-  };
-
   const handleDownloadPDF = async () => {
     if (!invoiceNo) {
-      Alert.alert('Error', 'Invoice number is required to download PDF');
+      Alert.alert('Error', 'Invoice number is required to generate the PDF');
       return;
     }
 
     if (!API_BASE_URL) {
-      console.error('Base URL is undefined');
       Alert.alert(
         'Configuration Error',
         'API base URL is not configured properly.',
@@ -317,56 +293,29 @@ const InvoiceDetailsScreen: React.FC = () => {
     try {
       setDownloadingPDF(true);
 
-      // ✅ Fix 1: Skip permission check for Android API 33+
-      const androidVersion =
-        Platform.OS === 'android'
-          ? typeof Platform.Version === 'number'
-            ? Platform.Version
-            : parseInt(Platform.Version, 10)
-          : 0;
-
-      if (Platform.OS === 'android' && androidVersion < 33) {
-        const hasPermission = await requestStoragePermission();
-        if (!hasPermission) {
-          Alert.alert(
-            'Permission Required',
-            'Storage permission is required to download PDF files.',
-          );
-          return;
-        }
-      }
-
       const headers = await getAuthHeaders();
       const pdfEndpoint = `${API_ENDPOINTS.GET_PDF_REPORT}/${invoiceNo}`;
-
-      console.log('Downloading PDF from:', pdfEndpoint);
-
-      Alert.alert(
-        'Download Started',
-        'Your invoice PDF is being downloaded. Please wait...',
-      );
 
       const response = await axios.get(pdfEndpoint, {
         headers,
         responseType: 'blob',
-        timeout: 60000,
+        timeout: 120000,
       });
 
       const fileName = `Invoice_${invoiceNo}.pdf`;
 
-      // ✅ Fix 2: Non-nullable download path
-      const downloadPath =
+      // App-private storage: always writable, no permission needed
+      const privateDir =
         Platform.OS === 'ios'
-          ? `${RNBlobUtil.fs.dirs.DocumentDir}/${fileName}`
-          : `${RNBlobUtil.fs.dirs.DownloadDir}/${fileName}`;
+          ? RNBlobUtil.fs.dirs.DocumentDir
+          : RNBlobUtil.fs.dirs.CacheDir;
+      const filePath = `${privateDir}/${fileName}`;
 
-      // ✅ Fix 3: Use base64Data (not pdfBase64 which was undefined)
       const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           if (typeof reader.result === 'string') {
-            const base64 = reader.result.split(',')[1] || '';
-            resolve(base64);
+            resolve(reader.result.split(',')[1] || '');
           } else {
             reject(new Error('FileReader result is not a string'));
           }
@@ -375,61 +324,40 @@ const InvoiceDetailsScreen: React.FC = () => {
         reader.readAsDataURL(response.data);
       });
 
-      // ✅ Fix 4: Use base64Data (was pdfBase64 before — undefined variable)
-      await RNBlobUtil.fs.writeFile(downloadPath, base64Data, 'base64');
-
-      console.log('PDF downloaded successfully to:', downloadPath);
-
-      // ✅ Fix 5: Scan file so it appears in Downloads on Android
-      if (Platform.OS === 'android') {
-        try {
-          await RNBlobUtil.fs.scanFile([
-            { path: downloadPath, mime: 'application/pdf' },
-          ]);
-        } catch (scanError) {
-          console.warn('Error scanning file:', scanError);
-        }
+      if (!base64Data) {
+        throw new Error('Server returned an empty file.');
       }
 
+      await RNBlobUtil.fs.writeFile(filePath, base64Data, 'base64');
+
       Alert.alert(
-        'Download Complete',
-        'Invoice PDF has been downloaded successfully!',
+        'PDF Generated',
+        'The invoice PDF has been generated successfully.',
         [
-          {
-            text: 'Open PDF',
-            onPress: () => openPDF(downloadPath),
-          },
-          {
-            text: 'OK',
-            style: 'default',
-          },
+          { text: 'OK', style: 'cancel' },
+          { text: 'View PDF', onPress: () => openPDF(filePath) },
         ],
       );
     } catch (error: unknown) {
       const axiosError = error as AxiosError;
-      console.error('PDF Download Error:', axiosError);
-      let errorMessage = 'Failed to download PDF';
+      console.error('PDF Error:', axiosError);
+      let errorMessage = 'Failed to generate the PDF';
 
       if (axiosError.response) {
-        console.error('Error Response:', axiosError.response.data);
         if (axiosError.response.status === 404) {
           errorMessage = 'Invoice not found. Please check the invoice number.';
         } else if (axiosError.response.status === 500) {
           errorMessage = 'Server error occurred while generating PDF.';
         } else {
-          errorMessage =
-            (axiosError.response.data as { message?: string })?.message ||
-            `Server Error: ${axiosError.response.status}`;
+          errorMessage = `Server Error: ${axiosError.response.status}`;
         }
       } else if (axiosError.request) {
-        console.error('No Response:', axiosError.request);
         errorMessage = 'Network Error: Unable to connect to server';
       } else {
-        console.error('Error Message:', axiosError.message);
         errorMessage = axiosError.message || 'An unexpected error occurred';
       }
 
-      Alert.alert('Download Failed', errorMessage);
+      Alert.alert('PDF Error', errorMessage);
     } finally {
       setDownloadingPDF(false);
     }
@@ -437,28 +365,12 @@ const InvoiceDetailsScreen: React.FC = () => {
 
   const openPDF = async (filePath: string) => {
     try {
-      await FileViewer.open(filePath);
+      await FileViewer.open(filePath, { showOpenWithDialog: true });
     } catch (error: unknown) {
       console.error('Error opening PDF:', error);
       Alert.alert(
         'Cannot Open PDF',
         'Unable to open the PDF file. Please check if you have a PDF viewer installed.',
-        [
-          {
-            text: 'Open Downloads Folder',
-            onPress: () => {
-              if (Platform.OS === 'android') {
-                Linking.openURL(
-                  'content://com.android.externalstorage.documents/document/primary%3ADownload',
-                );
-              }
-            },
-          },
-          {
-            text: 'OK',
-            style: 'default',
-          },
-        ],
       );
     }
   };
@@ -522,7 +434,7 @@ const InvoiceDetailsScreen: React.FC = () => {
           {downloadingPDF ? (
             <View style={styles.downloadButtonContent}>
               <ActivityIndicator size="small" color="#ffffff" />
-              <Text style={styles.downloadButtonText}>Downloading...</Text>
+              <Text style={styles.downloadButtonText}>Generating...</Text>
             </View>
           ) : (
             <Text style={styles.downloadButtonText}>📄 Download PDF</Text>

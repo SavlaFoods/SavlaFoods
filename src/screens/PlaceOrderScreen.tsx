@@ -152,12 +152,8 @@ const PlaceOrderScreen: React.FC<PlaceOrderScreenProps> = ({
   }, [groupedOrderItems]);
 
   const handleFillCart = useCallback(() => {
-    requestSearchFocus();
-    if (navigation.canGoBack()) {
-      navigation.goBack(); // back to the existing Home inside BottomTabNavigator
-    } else {
-      (navigation as any).navigate('BottomTabNavigator');
-    }
+    requestSearchFocus(); // set the flag FIRST so Home sees it when it gains focus
+    (navigation as any).navigate('BottomTabNavigator', { screen: 'Home' });
   }, [navigation]);
 
   const handleQuantityChange = useCallback(

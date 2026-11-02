@@ -7,7 +7,7 @@ const YOUR_COMPUTER_IP = '202.189.234.140';
 // const YOUR_COMPUTER_IP = '192.168.1.37';
 const PORT = '5000';
 
-export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf/v1`;
+export const API_BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}/sf`;
 // export const BASE_URL = `http://${YOUR_COMPUTER_IP}:${PORT}`;
 
 export const API_ENDPOINTS = {
@@ -35,6 +35,7 @@ export const API_ENDPOINTS = {
   UPDATE_PENDING_ORDER: `${API_BASE_URL}/order/updatePendingOrder`,
   GET_CANCEL_ORDER: `${API_BASE_URL}/order/cancelOrder`,
   DELETE_ORDER: `${API_BASE_URL}/order/deleteOrder`,
+  GET_APPROVED_ORDERS: `${API_BASE_URL}/order/getPendingOrderswithstatus`,
 
   //labor
   GET_LABOUR_CHARGES: `${API_BASE_URL}/labourCharges/getlabourcharges`,

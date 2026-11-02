@@ -5,14 +5,25 @@ import {
 } from './secureStorage';
 
 export const SESSION_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours
-// export const SESSION_TIMEOUT_MS = 3 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'lastActivityTimestamp';
+const PERSIST_THROTTLE_MS = 15 * 1000;
+
+// In-memory source of truth; the keychain is only a backup for cold starts
+let lastActivityMemory: number | null = null;
+let lastPersistedAt = 0;
 
 export const recordActivity = async (): Promise<void> => {
-  await setSecureItem(LAST_ACTIVITY_KEY, Date.now().toString());
+  const now = Date.now();
+  lastActivityMemory = now; // always update memory
+
+  // don't hit the keychain on every touch
+  if (now - lastPersistedAt < PERSIST_THROTTLE_MS) return;
+  lastPersistedAt = now;
+  await setSecureItem(LAST_ACTIVITY_KEY, now.toString()); // best-effort, never throws
 };
 
 export const getLastActivity = async (): Promise<number | null> => {
+  if (lastActivityMemory !== null) return lastActivityMemory;
   const raw = await getSecureItem(LAST_ACTIVITY_KEY);
   if (!raw) return null;
   const parsed = parseInt(raw, 10);
@@ -20,6 +31,8 @@ export const getLastActivity = async (): Promise<number | null> => {
 };
 
 export const clearActivity = async (): Promise<void> => {
+  lastActivityMemory = null;
+  lastPersistedAt = 0;
   await removeSecureItem(LAST_ACTIVITY_KEY);
 };
 
@@ -54,10 +67,16 @@ export const getTokenExpiry = (token: string | null): number | null => {
     return null;
   }
 };
-
 export const hasSessionExpired = async (): Promise<boolean> => {
-  const start = await getLastActivity();
-  if (start === null) return true;
+  let start = await getLastActivity();
+
+  if (start === null) {
+    // Nothing stored (or keychain unavailable): treat as active, not expired.
+    // Seed memory so the 3-hour window starts now.
+    start = Date.now();
+    lastActivityMemory = start;
+  }
+
   if (Date.now() - start >= SESSION_TIMEOUT_MS) return true;
 
   // Also respect the server token's own expiry
